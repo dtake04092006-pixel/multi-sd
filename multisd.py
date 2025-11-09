@@ -1,5 +1,5 @@
-# TÊN FILE: multi_kd_v2.py
-# PHIÊN BẢN: Multi-Farm Deep Control v4.0 (SOFI + Smart Grab)
+# TÊN FILE: multi_sofi_advanced.py
+# PHIÊN BẢN: Multi-Farm Sofi Control v4.0 (Smart Button Detection)
 import discord
 from discord.ext import commands
 import asyncio
@@ -17,14 +17,21 @@ import re
 load_dotenv()
 
 # --- CẤU HÌNH & BIẾN TOÀN CỤC ---
-SOFI_ID = 853629533855809596  # ID của bot Sofi
+SOFI_ID = 853629533855809596
 
 # Tải danh sách tài khoản từ biến môi trường
+TOKEN_MAIN = os.getenv("TOKEN_MAIN", "")  # Token chính - có khả năng đọc và phân tích
 TOKENS_STR = os.getenv("TOKENS", "")
 ACC_NAMES_STR = os.getenv("ACC_NAMES", "")
 
 # Xử lý danh sách tài khoản
 GLOBAL_ACCOUNTS = []
+main_account = None
+
+if TOKEN_MAIN:
+    main_account = {"id": "acc_main", "name": "Main Account", "token": TOKEN_MAIN}
+    GLOBAL_ACCOUNTS.append(main_account)
+
 tokens_list = [token.strip() for token in TOKENS_STR.split(',') if token.strip()]
 acc_names_list = [name.strip() for name in ACC_NAMES_STR.split(',') if name.strip()]
 
@@ -34,18 +41,18 @@ for i, token in enumerate(tokens_list):
 
 # Biến trạng thái
 panels = []
+main_panel_config = {
+    "min_value": 0,  # Giá trị tối thiểu để nhặt
+    "priority_emojis": []  # Danh sách emoji ưu tiên
+}
 current_drop_slot = 0
-is_sd_loop_enabled = True
+is_auto_drop_enabled = True
 bot_ready = False
 listener_bot = None
-last_sd_cycle_time = 0
+last_drop_cycle_time = 0
 
-# Cấu hình cho Account 1 (Main account)
-main_account_config = {
-    "enabled": False,
-    "min_value": 1,
-    "priority_emojis": []
-}
+# Bộ nhớ lưu thông tin button từ Main Account
+detected_buttons_cache = {}
 
 # --- CÁC HÀM TIỆN ÍCH & API DISCORD (AIOHTTP + SPOOFING) ---
 
@@ -66,187 +73,11 @@ async def send_message_http_async(session, token, channel_id, content):
     payload = {"content": content}
     url = f"https://discord.com/api/v9/channels/{channel_id}/messages"
     try:
-        async with session.post(url, headers=headers, json=payload, timeout=15) as res:
+        async with session.post(url, headers=headers, json=payload, timeout=10) as res:
             if res.status != 200:
                 print(f"[HTTP SEND ERROR] Lỗi khi gửi tin nhắn tới kênh {channel_id}: {res.status}")
     except Exception as e:
         print(f"[HTTP SEND EXCEPTION] Lỗi ngoại lệ khi gửi tin nhắn: {e}")
-
-def extract_number_from_label(label):
-    """Trích xuất số từ label của button."""
-    if not label:
-        return 0
-    # Tìm tất cả các số trong label
-    numbers = re.findall(r'\d+', label)
-    if numbers:
-        return int(numbers[0])
-    return 0
-
-def get_emoji_string(emoji_obj):
-    """Chuyển đổi emoji object thành string để so sánh."""
-    if emoji_obj is None:
-        return ""
-    return str(emoji_obj)
-
-async def smart_click_button(message, bot_user, config):
-    """
-    Click button thông minh cho main account:
-    - Ưu tiên button có emoji trong danh sách
-    - Nếu không có emoji ưu tiên, chọn button có số cao nhất
-    - Chỉ click nếu số >= min_value
-    """
-    await asyncio.sleep(6)  # Delay 6 giây
-    
-    try:
-        print(f"[SMART GRAB] {bot_user.name} đang phân tích buttons...")
-        
-        fetched_message = None
-        found_buttons = []
-        
-        # Tìm buttons (thử 5 lần)
-        for attempt in range(5):
-            try:
-                fetched_message = await message.channel.fetch_message(message.id)
-                found_buttons = []
-                
-                for action_row in fetched_message.components:
-                    for component in action_row.children:
-                        if isinstance(component, discord.Button):
-                            found_buttons.append(component)
-                
-                if len(found_buttons) >= 3:
-                    break
-            except:
-                pass
-            await asyncio.sleep(1)
-        
-        if not found_buttons:
-            print(f"[SMART GRAB] {bot_user.name} - Không tìm thấy button nào")
-            return
-        
-        # Phân tích buttons
-        button_info = []
-        for idx, btn in enumerate(found_buttons):
-            number = extract_number_from_label(btn.label)
-            emoji = get_emoji_string(btn.emoji)
-            button_info.append({
-                "index": idx,
-                "button": btn,
-                "number": number,
-                "emoji": emoji,
-                "label": btn.label or "No label"
-            })
-            print(f"  Button {idx+1}: {btn.label} | Số: {number} | Emoji: {emoji}")
-        
-        # Tìm button tốt nhất
-        best_button = None
-        
-        # Bước 1: Ưu tiên theo emoji
-        if config["priority_emojis"]:
-            for priority_emoji in config["priority_emojis"]:
-                for btn_info in button_info:
-                    if priority_emoji in btn_info["emoji"] and btn_info["number"] >= config["min_value"]:
-                        best_button = btn_info
-                        print(f"[SMART GRAB] Tìm thấy button với emoji ưu tiên: {priority_emoji}")
-                        break
-                if best_button:
-                    break
-        
-        # Bước 2: Nếu không có emoji ưu tiên, chọn số cao nhất
-        if not best_button:
-            valid_buttons = [b for b in button_info if b["number"] >= config["min_value"]]
-            if valid_buttons:
-                best_button = max(valid_buttons, key=lambda x: x["number"])
-                print(f"[SMART GRAB] Chọn button có số cao nhất: {best_button['number']}")
-        
-        # Click button
-        if best_button:
-            await best_button["button"].click()
-            print(f"[SMART GRAB] ✅ {bot_user.name} đã click button '{best_button['label']}'")
-        else:
-            print(f"[SMART GRAB] ❌ Không có button nào đáp ứng điều kiện (min: {config['min_value']})")
-            
-    except Exception as e:
-        print(f"[SMART GRAB ERROR] {bot_user.name}: {e}")
-
-async def normal_click_button(message, grab_index, delay, bot_user):
-    """Click button bình thường cho các account còn lại."""
-    await asyncio.sleep(delay)
-    
-    try:
-        print(f"[NORMAL GRAB] {bot_user.name} đang tìm button vị trí {grab_index+1}...")
-        
-        fetched_message = None
-        found_buttons = []
-        
-        for attempt in range(5):
-            try:
-                fetched_message = await message.channel.fetch_message(message.id)
-                found_buttons = []
-                
-                for action_row in fetched_message.components:
-                    for component in action_row.children:
-                        if isinstance(component, discord.Button):
-                            found_buttons.append(component)
-                
-                if len(found_buttons) >= 3:
-                    break
-            except:
-                pass
-            await asyncio.sleep(1)
-        
-        if len(found_buttons) > grab_index:
-            target_button = found_buttons[grab_index]
-            await target_button.click()
-            print(f"[NORMAL GRAB] ✅ {bot_user.name} đã click button vị trí {grab_index+1}")
-        else:
-            print(f"[NORMAL GRAB] ❌ {bot_user.name} - Không tìm thấy button (Tìm thấy {len(found_buttons)} button)")
-            
-    except Exception as e:
-        print(f"[NORMAL GRAB ERROR] {bot_user.name}: {e}")
-
-async def handle_buttons(panel, message, all_panels=None):
-    """Xử lý việc click button."""
-    accounts_in_panel = panel.get("accounts", {})
-    if not accounts_in_panel:
-        return
-    
-    grab_times = [6.0, 6.3, 6.6]  # Tăng thời gian lên 6s
-    
-    tasks = []
-    
-    # Xử lý từng slot
-    for i in range(3):
-        slot_key = f"slot_{i + 1}"
-        token = accounts_in_panel.get(slot_key)
-        
-        if not token:
-            continue
-        
-        # Tìm bot tương ứng với token
-        bot_instance = None
-        for bot_data in running_bots:
-            if bot_data["token"] == token:
-                bot_instance = bot_data["bot"]
-                break
-        
-        if not bot_instance:
-            continue
-        
-        # Kiểm tra xem có phải main account không
-        is_main_account = (token == GLOBAL_ACCOUNTS[0]["token"]) if GLOBAL_ACCOUNTS else False
-        
-        if is_main_account and main_account_config["enabled"]:
-            # Main account dùng smart grab
-            tasks.append(smart_click_button(message, bot_instance.user, main_account_config))
-        else:
-            # Account thường dùng normal grab
-            delay = grab_times[i]
-            tasks.append(normal_click_button(message, i, delay, bot_instance.user))
-    
-    if tasks:
-        await asyncio.gather(*tasks)
-        print(f"Đã hoàn thành các tác vụ click button cho drop trong kênh {message.channel.id}")
 
 # --- LƯU & TẢI CẤU HÌNH PANEL ---
 
@@ -263,14 +94,14 @@ def save_panels():
     
     data_to_save = {
         "panels": panels,
-        "main_account_config": main_account_config
+        "main_panel_config": main_panel_config
     }
     
     try:
         def do_save():
             req = requests.put(url, json=data_to_save, headers=headers, timeout=15)
             if req.status_code == 200:
-                print("[Settings] Đã lưu cấu hình lên JSONBin.io thành công.")
+                print("[Settings] Đã lưu cấu hình panels lên JSONBin.io thành công.")
             else:
                 print(f"[Settings] Lỗi khi lưu cài đặt: {req.status_code} - {req.text}")
         threading.Thread(target=do_save, daemon=True).start()
@@ -279,7 +110,7 @@ def save_panels():
 
 def load_panels():
     """Tải cấu hình các panel từ JSONBin.io"""
-    global panels, main_account_config
+    global panels, main_panel_config
     api_key = os.getenv("JSONBIN_API_KEY")
     bin_id = os.getenv("JSONBIN_BIN_ID")
     if not api_key or not bin_id:
@@ -294,13 +125,13 @@ def load_panels():
             data = req.json()
             if isinstance(data, dict):
                 panels = data.get("panels", [])
-                main_account_config.update(data.get("main_account_config", main_account_config))
+                main_panel_config = data.get("main_panel_config", {"min_value": 0, "priority_emojis": []})
                 print(f"[Settings] Đã tải {len(panels)} panel từ JSONBin.io.")
             elif isinstance(data, list):
                 panels = data
-                print(f"[Settings] Đã tải {len(panels)} panel (format cũ).")
+                save_panels()
         else:
-            print(f"[Settings] Lỗi khi tải cài đặt: {req.status_code}")
+            print(f"[Settings] Lỗi khi tải cài đặt: {req.status_code} - {req.text}")
     except Exception as e:
         print(f"[Settings] Exception khi tải cài đặt: {e}")
 
@@ -335,67 +166,291 @@ def get_server_name_from_channel(channel_id):
     except requests.RequestException:
         return "Lỗi mạng"
 
-# --- LOGIC BOT CHÍNH ---
+# --- LOGIC PHÂN TÍCH BUTTON THÔNG MINH (CHO MAIN ACCOUNT) ---
 
-running_bots = []
+def extract_number_from_text(text):
+    """Trích xuất số từ text (VD: '★5 Character' -> 5)"""
+    if not text:
+        return None
+    # Tìm tất cả các số trong text
+    numbers = re.findall(r'\d+', text)
+    if numbers:
+        return int(numbers[0])
+    return None
 
-async def run_listener_bot(token, account_info):
-    """Chạy một bot để lắng nghe drop."""
-    global running_bots
+def analyze_button_priority(button, config):
+    """
+    Phân tích độ ưu tiên của button dựa trên:
+    1. Emoji ưu tiên
+    2. Giá trị số (nếu có)
+    Trả về: (priority_score, value)
+    """
+    emoji_str = str(button.emoji) if button.emoji else ""
+    label = button.label or ""
     
-    bot = commands.Bot(
+    # Kiểm tra emoji ưu tiên
+    emoji_priority = -1
+    for idx, priority_emoji in enumerate(config.get("priority_emojis", [])):
+        if priority_emoji in emoji_str or priority_emoji in label:
+            emoji_priority = idx
+            break
+    
+    # Trích xuất giá trị số
+    value = extract_number_from_text(label)
+    
+    # Tính điểm ưu tiên
+    # Emoji match = ưu tiên cao nhất (điểm càng thấp càng ưu tiên)
+    # Không match emoji = dựa vào giá trị số
+    if emoji_priority >= 0:
+        priority_score = emoji_priority * 1000  # Emoji ưu tiên luôn cao hơn
+    else:
+        priority_score = 10000  # Không có emoji ưu tiên
+    
+    # Thêm giá trị số (số càng cao, priority_score càng thấp)
+    if value is not None:
+        priority_score -= value
+    
+    return (priority_score, value if value else 0)
+
+async def smart_button_click_main(message, bot, config):
+    """
+    Main Account: Phân tích và click button thông minh
+    - Ưu tiên emoji theo danh sách
+    - Chọn button có giá trị cao nhất
+    - Kiểm tra giá trị tối thiểu
+    """
+    await asyncio.sleep(6)  # Delay 6 giây như yêu cầu
+    
+    try:
+        print(f"[MAIN] 🧠 Đang phân tích button...")
+        
+        fetched_message = None
+        found_buttons = []
+        
+        for attempt in range(5):
+            try:
+                fetched_message = await message.channel.fetch_message(message.id)
+                
+                found_buttons = []
+                for action_row in fetched_message.components:
+                    for component in action_row.children:
+                        if isinstance(component, discord.Button):
+                            found_buttons.append(component)
+                
+                if len(found_buttons) >= 3:
+                    break
+            except:
+                pass
+            await asyncio.sleep(1)
+        
+        if not found_buttons:
+            print(f"[MAIN] ❌ Không tìm thấy button nào")
+            return None
+        
+        # Phân tích từng button
+        button_analysis = []
+        for idx, btn in enumerate(found_buttons):
+            priority, value = analyze_button_priority(btn, config)
+            button_analysis.append({
+                "index": idx,
+                "button": btn,
+                "priority": priority,
+                "value": value,
+                "label": btn.label or "No label",
+                "emoji": str(btn.emoji) if btn.emoji else ""
+            })
+            print(f"[MAIN] 📊 Button {idx+1}: {btn.label} | Emoji: {btn.emoji} | Value: {value} | Priority: {priority}")
+        
+        # Sắp xếp theo độ ưu tiên (priority thấp = ưu tiên cao)
+        button_analysis.sort(key=lambda x: x["priority"])
+        
+        # Chọn button tốt nhất thỏa mãn điều kiện min_value
+        min_value = config.get("min_value", 0)
+        best_button = None
+        
+        for btn_info in button_analysis:
+            if btn_info["value"] >= min_value:
+                best_button = btn_info
+                break
+        
+        if best_button:
+            print(f"[MAIN] ✅ Chọn button: {best_button['label']} (Value: {best_button['value']})")
+            await best_button["button"].click()
+            print(f"[MAIN] 🖱️ ĐÃ CLICK!")
+            
+            # Lưu thông tin để các account khác sử dụng
+            detected_buttons_cache[str(message.channel.id)] = {
+                "message_id": message.id,
+                "best_index": best_button["index"],
+                "timestamp": time.time()
+            }
+            
+            return best_button["index"]
+        else:
+            print(f"[MAIN] ⚠️ Không có button nào thỏa mãn điều kiện (min_value: {min_value})")
+            return None
+            
+    except Exception as e:
+        print(f"[MAIN] ❌ Lỗi khi phân tích button: {e}")
+        return None
+
+async def handle_button_click_follower(message, bot, account_info, grab_index, delay):
+    """
+    Các account theo sau: Click button theo chỉ định của panel
+    """
+    await asyncio.sleep(delay)
+    
+    try:
+        print(f"[{account_info['name']}] 🎯 Đang tìm button vị trí {grab_index+1}...")
+        
+        fetched_message = None
+        found_buttons = []
+        
+        for attempt in range(5):
+            try:
+                fetched_message = await message.channel.fetch_message(message.id)
+                
+                found_buttons = []
+                for action_row in fetched_message.components:
+                    for component in action_row.children:
+                        if isinstance(component, discord.Button):
+                            found_buttons.append(component)
+                
+                if len(found_buttons) >= 3:
+                    break
+            except:
+                pass
+            await asyncio.sleep(1)
+        
+        if len(found_buttons) > grab_index:
+            target_button = found_buttons[grab_index]
+            await target_button.click()
+            print(f"[{account_info['name']}] 🖱️ ĐÃ CLICK button vị trí {grab_index+1}!")
+        else:
+            print(f"[{account_info['name']}] ❌ Không tìm thấy button vị trí {grab_index+1}")
+            
+    except Exception as e:
+        print(f"[{account_info['name']}] ⚠️ Lỗi click: {e}")
+
+async def handle_drop_detection(message, panel):
+    """
+    Xử lý khi phát hiện drop trong panel
+    - Main account: Phân tích thông minh và click
+    - Các account khác: Click theo slot đã cấu hình
+    """
+    accounts_in_panel = panel.get("accounts", {})
+    if not accounts_in_panel:
+        return
+    
+    tasks = []
+    grab_indices = [0, 1, 2]
+    grab_delays = [6.0, 6.2, 6.4]
+    
+    # Kiểm tra xem có phải channel của Main không
+    is_main_channel = False
+    if main_account and str(message.channel.id) == panel.get("channel_id"):
+        # Kiểm tra xem main account có được assign vào panel này không
+        for slot_key, token in accounts_in_panel.items():
+            if token == main_account["token"]:
+                is_main_channel = True
+                break
+    
+    # Nếu là channel có Main Account, Main sẽ phân tích và click trước
+    if is_main_channel and main_account:
+        # Main account click thông minh
+        async def main_click_task():
+            main_bot = None
+            for bot in [listener_bot]:  # Tìm bot của main account
+                if bot and bot.user:
+                    break
+            if main_bot:
+                await smart_button_click_main(message, main_bot, main_panel_config)
+        
+        tasks.append(main_click_task())
+    
+    # Các account khác click theo cấu hình
+    for i in range(3):
+        slot_key = f"slot_{i + 1}"
+        token = accounts_in_panel.get(slot_key)
+        
+        if token and token != (main_account["token"] if main_account else None):
+            # Tìm account info
+            acc_info = next((acc for acc in GLOBAL_ACCOUNTS if acc["token"] == token), None)
+            if acc_info:
+                grab_index = grab_indices[i]
+                delay = grab_delays[i]
+                
+                async def click_task(acc, msg, idx, d):
+                    # Tìm bot tương ứng với token này
+                    # (Trong thực tế, bạn cần track bot instances cho từng account)
+                    await handle_button_click_follower(msg, None, acc, idx, d)
+                
+                tasks.append(click_task(acc_info, message, grab_index, delay))
+    
+    if tasks:
+        await asyncio.gather(*tasks)
+        print(f"✅ Hoàn thành xử lý drop cho panel '{panel.get('name')}'")
+
+async def run_listener_bot(session):
+    """Chạy bot chính để lắng nghe sự kiện drop"""
+    global bot_ready, listener_bot
+    
+    if not GLOBAL_ACCOUNTS:
+        print("Không có token nào trong biến môi trường. Bot không thể khởi động.")
+        bot_ready = True
+        return
+    
+    listener_token = GLOBAL_ACCOUNTS[0]["token"]
+    
+    listener_bot = commands.Bot(
         command_prefix="!слушать",
         self_bot=True,
         chunk_guilds_at_startup=False,
         member_cache_flags=discord.MemberCacheFlags.none()
     )
-    
-    @bot.event
+
+    @listener_bot.event
     async def on_ready():
-        print(f"[BOT] Đã đăng nhập: {bot.user.name} (ID: {bot.user.id})")
-        running_bots.append({"bot": bot, "token": token, "account": account_info})
-    
-    @bot.event
+        global bot_ready
+        print("-" * 60)
+        print(f"🤖 BOT LẮNG NGHE ĐÃ SẴN SÀNG!")
+        print(f"👤 Đăng nhập với tài khoản: {listener_bot.user} (ID: {listener_bot.user.id})")
+        if main_account and listener_token == main_account["token"]:
+            print(f"⭐ Đây là MAIN ACCOUNT - Có khả năng phân tích thông minh")
+        print("🎯 Kiến trúc: Smart Button Detection + Multi-Panel Control")
+        print("-" * 60)
+        bot_ready = True
+
+    @listener_bot.event
     async def on_message(message):
         if message.author.id != SOFI_ID:
             return
         
         content = message.content.lower()
-        if "dropping" not in content and "thả" not in content:
-            return
         
-        # Tìm panel tương ứng với kênh này
-        found_panel = None
-        for p in panels:
-            if p.get("channel_id") == str(message.channel.id):
-                found_panel = p
-                break
-        
-        if found_panel:
-            print(f"Phát hiện drop trong kênh {message.channel.id} (Panel: '{found_panel.get('name')}')")
-            asyncio.create_task(handle_buttons(found_panel, message, panels))
-    
-    try:
-        await bot.start(token)
-    except Exception as e:
-        print(f"[BOT ERROR] Lỗi với bot {account_info['name']}: {e}")
+        # Phát hiện drop
+        if "dropping" in content or "thả" in content or "drop" in content:
+            found_panel = None
+            for p in panels:
+                if p.get("channel_id") == str(message.channel.id):
+                    found_panel = p
+                    break
+            
+            if found_panel:
+                print(f"\n{'='*60}")
+                print(f"🎁 PHÁT HIỆN DROP trong '{found_panel.get('name')}'")
+                print(f"📝 Nội dung: {message.content[:100]}")
+                print(f"{'='*60}")
+                asyncio.create_task(handle_drop_detection(message, found_panel))
 
-async def start_all_listener_bots():
-    """Khởi động tất cả các bot listener."""
-    global bot_ready
-    
-    if not GLOBAL_ACCOUNTS:
-        print("Không có token nào trong biến môi trường.")
+    try:
+        await listener_bot.start(listener_token)
+    except discord.errors.LoginFailure:
+        print(f"❌ LỖI ĐĂNG NHẬP NGHIÊM TRỌNG với token của bot lắng nghe.")
         bot_ready = True
-        return
-    
-    tasks = []
-    for acc in GLOBAL_ACCOUNTS:
-        tasks.append(run_listener_bot(acc["token"], acc))
-    
-    # Đợi tất cả bot đăng nhập
-    await asyncio.gather(*tasks, return_exceptions=True)
-    bot_ready = True
+    except Exception as e:
+        print(f"❌ Lỗi không xác định với bot lắng nghe: {e}")
+        bot_ready = True
 
 # --- GIAO DIỆN WEB & API FLASK ---
 
@@ -407,48 +462,61 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multi-Farm Deep Control v4.0</title>
+    <title>Multi-Sofi Smart Control</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root { --primary-bg: #111; --secondary-bg: #1d1d1d; --panel-bg: #2a2a2a; --border-color: #444; --text-primary: #f0f0f0; --text-secondary: #aaa; --accent-color: #00aaff; --danger-color: #ff4444; --success-color: #44ff44; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: var(--primary-bg); color: var(--text-primary); margin: 0; padding: 20px; }
         .container { max-width: 1800px; margin: 0 auto; }
         .header { text-align: center; margin-bottom: 30px; }
-        .header h1 { color: var(--accent-color); font-weight: 600; }
+        .header h1 { color: var(--accent-color); font-weight: 600; margin-bottom: 10px; }
+        .header .subtitle { color: var(--text-secondary); font-size: 0.9em; }
+        
         .status-bar { display: flex; justify-content: space-around; background-color: var(--secondary-bg); padding: 15px; border-radius: 8px; margin-bottom: 20px; flex-wrap: wrap; gap: 15px; }
         .status-item { text-align: center; }
         .status-item span { display: block; font-size: 0.9em; color: var(--text-secondary); }
         .status-item strong { font-size: 1.2em; color: var(--accent-color); }
+        
+        .main-config { background-color: var(--secondary-bg); border: 2px solid var(--success-color); border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+        .main-config h2 { color: var(--success-color); margin-top: 0; font-size: 1.3em; }
+        .main-config-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 20px; align-items: start; }
+        
         .controls { display: flex; justify-content: center; gap: 15px; margin-bottom: 30px; flex-wrap: wrap; }
-        .btn { background-color: var(--accent-color); color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 1em; transition: background-color 0.3s; }
-        .btn:hover { background-color: #0088cc; }
+        .btn { background-color: var(--accent-color); color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 1em; transition: all 0.3s; }
+        .btn:hover { background-color: #0088cc; transform: translateY(-2px); }
         .btn-danger { background-color: var(--danger-color); }
         .btn-danger:hover { background-color: #cc3333; }
-        .btn-success { background-color: var(--success-color); color: #000; }
-        .btn-success:hover { background-color: #33cc33; }
+        .btn-success { background-color: var(--success-color); color: #111; }
+        .btn-success:hover { background-color: #33dd33; }
+        
         .farm-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 20px; }
-        .panel { background-color: var(--secondary-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; position: relative; }
-        .panel.main-panel { border: 2px solid var(--success-color); }
+        .panel { background-color: var(--secondary-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; position: relative; transition: transform 0.2s; }
+        .panel:hover { transform: translateY(-3px); border-color: var(--accent-color); }
         .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; }
-        .panel-header h3 { margin: 0; font-size: 1.2em; }
+        .panel-header h3 { margin: 0; font-size: 1.2em; color: var(--accent-color); }
+        
         .input-group { margin-bottom: 15px; }
         .input-group label { display: block; color: var(--text-secondary); margin-bottom: 5px; font-size: 0.9em; }
-        .input-group input, .input-group select, .input-group textarea { width: 100%; background-color: var(--primary-bg); border: 1px solid var(--border-color); color: var(--text-primary); padding: 8px; border-radius: 5px; box-sizing: border-box; }
-        .input-group textarea { min-height: 60px; resize: vertical; font-family: inherit; }
-        .account-slots { display: grid; grid-template-columns: 1fr; gap: 15px; }
+        .input-group input, .input-group select, .input-group textarea { width: 100%; background-color: var(--primary-bg); border: 1px solid var(--border-color); color: var(--text-primary); padding: 8px; border-radius: 5px; box-sizing: border-box; font-family: inherit; }
+        .input-group textarea { min-height: 80px; resize: vertical; }
+        .input-group input:focus, .input-group select:focus, .input-group textarea:focus { outline: none; border-color: var(--accent-color); }
+        
+        .emoji-input { display: flex; gap: 10px; align-items: flex-start; }
+        .emoji-input textarea { flex: 1; }
+        .emoji-help { font-size: 0.8em; color: var(--text-secondary); margin-top: 5px; font-style: italic; }
+        
         .server-name-display { font-size: 0.8em; color: var(--text-secondary); margin-top: 5px; display: block; height: 1.2em; }
-        .main-config-section { background-color: var(--panel-bg); padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 2px solid var(--success-color); }
-        .checkbox-group { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-        .checkbox-group input[type="checkbox"] { width: 20px; height: 20px; cursor: pointer; }
-        .emoji-input { font-size: 1.2em; }
-        .help-text { font-size: 0.85em; color: var(--text-secondary); font-style: italic; margin-top: 5px; }
+        
+        .account-slots { display: grid; grid-template-columns: 1fr; gap: 15px; }
+        
+        .info-badge { display: inline-block; background-color: var(--success-color); color: #111; padding: 3px 8px; border-radius: 3px; font-size: 0.8em; font-weight: bold; margin-left: 10px; }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🚀 Multi-Farm Deep Control v4.0</h1>
-            <p>Hệ thống quản lý farm thông minh với Sofi Bot</p>
+            <h1><i class="fas fa-brain"></i> Multi-Sofi Smart Control v4.0</h1>
+            <p class="subtitle">🧠 Hệ thống phân tích button thông minh với Main Account AI</p>
         </div>
 
         <div class="status-bar">
@@ -458,31 +526,28 @@ HTML_TEMPLATE = """
             <div class="status-item"><span>Thời gian chờ</span><strong id="countdown">--:--:--</strong></div>
         </div>
 
-        <!-- Main Account Config -->
-        <div class="main-config-section">
-            <h3>⚙️ Cấu hình Account Main (Token đầu tiên)</h3>
-            <div class="checkbox-group">
-                <input type="checkbox" id="main-enabled">
-                <label for="main-enabled"><strong>Bật chế độ Smart Grab cho Account Main</strong></label>
+        <div class="main-config">
+            <h2><i class="fas fa-crown"></i> Cấu Hình Main Account <span class="info-badge">SMART AI</span></h2>
+            <div class="main-config-grid">
+                <div class="input-group">
+                    <label><i class="fas fa-sort-numeric-up"></i> Giá trị tối thiểu (Min Value)</label>
+                    <input type="number" id="main-min-value" min="0" placeholder="VD: 3">
+                    <div class="emoji-help">Main chỉ nhặt button có giá trị ≥ con số này</div>
+                </div>
+                <div class="input-group">
+                    <label><i class="fas fa-star"></i> Emoji ưu tiên (Priority Emojis)</label>
+                    <div class="emoji-input">
+                        <textarea id="main-priority-emojis" placeholder="VD: ⭐,🌟,✨&#10;(Mỗi emoji một dòng hoặc cách nhau bởi dấu phẩy)"></textarea>
+                    </div>
+                    <div class="emoji-help">Độ ưu tiên từ trên xuống dưới. Emoji đầu tiên = ưu tiên cao nhất.</div>
+                </div>
             </div>
-            <div class="input-group">
-                <label>Giá trị tối thiểu</label>
-                <input type="number" id="main-min-value" min="1" value="1">
-                <div class="help-text">Account main chỉ nhặt button có số >= giá trị này</div>
-            </div>
-            <div class="input-group">
-                <label>Danh sách Emoji ưu tiên (mỗi dòng 1 emoji)</label>
-                <textarea id="main-emojis" class="emoji-input" placeholder="🔥
-⭐
-💎"></textarea>
-                <div class="help-text">Emoji ở trên được ưu tiên hơn. Nếu không có emoji ưu tiên, sẽ chọn số cao nhất.</div>
-            </div>
-            <button id="save-main-config" class="btn btn-success">💾 Lưu cấu hình Main</button>
+            <button id="save-main-config-btn" class="btn btn-success"><i class="fas fa-save"></i> Lưu Cấu Hình Main</button>
         </div>
 
         <div class="controls">
             <button id="add-panel-btn" class="btn"><i class="fas fa-plus"></i> Thêm Panel Mới</button>
-            <button id="toggle-sd-btn" class="btn"></button>
+            <button id="toggle-drop-btn" class="btn"></button>
         </div>    
 
         <div id="farm-grid" class="farm-grid"></div>
@@ -501,7 +566,7 @@ document.addEventListener('DOMContentLoaded', function () {
             };
             if (data) options.body = JSON.stringify(data);
             const response = await fetch(url, options);
-            if (!response.ok) throw new Error(\`HTTP error! status: \${response.status}\`);
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             return await response.json();
         } catch (error) {
             console.error('API call failed:', error);
@@ -513,22 +578,19 @@ document.addEventListener('DOMContentLoaded', function () {
     async function loadMainConfig() {
         const config = await apiCall('GET', MAIN_CONFIG_ENDPOINT);
         if (config) {
-            document.getElementById('main-enabled').checked = config.enabled;
-            document.getElementById('main-min-value').value = config.min_value;
-            document.getElementById('main-emojis').value = config.priority_emojis.join('\\n');
+            document.getElementById('main-min-value').value = config.min_value || 0;
+            document.getElementById('main-priority-emojis').value = (config.priority_emojis || []).join('\n');
         }
     }
     
-    document.getElementById('save-main-config').addEventListener('click', async () => {
-        const enabled = document.getElementById('main-enabled').checked;
-        const min_value = parseInt(document.getElementById('main-min-value').value) || 1;
-        const emojis_text = document.getElementById('main-emojis').value;
-        const priority_emojis = emojis_text.split('\\n').map(e => e.trim()).filter(e => e);
+    document.getElementById('save-main-config-btn').addEventListener('click', async () => {
+        const minValue = parseInt(document.getElementById('main-min-value').value) || 0;
+        const emojisText = document.getElementById('main-priority-emojis').value;
+        const emojis = emojisText.split(/[\n,]/).map(e => e.trim()).filter(e => e);
         
-        const result = await apiCall('POST', MAIN_CONFIG_ENDPOINT, {
-            enabled: enabled,
-            min_value: min_value,
-            priority_emojis: priority_emojis
+        const result = await apiCall('PUT', MAIN_CONFIG_ENDPOINT, {
+            min_value: minValue,
+            priority_emojis: emojis
         });
         
         if (result) {
@@ -556,36 +618,36 @@ document.addEventListener('DOMContentLoaded', function () {
             let accountSlotsHTML = '';
             
             for (let i = 1; i <= 3; i++) {
-                const slotKey = \`slot_\${i}\`;
+                const slotKey = `slot_${i}`;
                 const currentTokenForSlot = panel.accounts[slotKey] || '';
                 
                 let uniqueAccountOptions = '<option value="">-- Chọn tài khoản --</option>';
                 
                 {{ GLOBAL_ACCOUNTS_JSON | safe }}.forEach(acc => {
                     if (!usedTokens.has(acc.token) || acc.token === currentTokenForSlot) {
-                        uniqueAccountOptions += \`<option value="\${acc.token}">\${acc.name}</option>\`;
+                        const mainBadge = acc.id === 'acc_main' ? ' 👑' : '';
+                        uniqueAccountOptions += `<option value="${acc.token}">${acc.name}${mainBadge}</option>`;
                     }
                 });
     
-                accountSlotsHTML += \`
+                accountSlotsHTML += `
                     <div class="input-group">
-                        <label>Slot \${i}</label>
-                        <select class="account-selector" data-slot="\${slotKey}">
-                            \${uniqueAccountOptions}
+                        <label>Slot ${i}</label>
+                        <select class="account-selector" data-slot="${slotKey}">
+                            ${uniqueAccountOptions}
                         </select>
                     </div>
-                \`;
+                `;
             }
     
-            panelEl.innerHTML = \`
+            panelEl.innerHTML = `
                 <div class="panel-header">
-                    <h3 contenteditable="true" class="panel-name">\${panel.name}</h3>
+                    <h3 contenteditable="true" class="panel-name">${panel.name}</h3>
                     <button class="btn btn-danger btn-sm delete-panel-btn"><i class="fas fa-trash"></i></button>
                 </div>
                 <div class="input-group">
                     <label>Channel ID</label>
-                    <input type
-="text" class="channel-id-input" value="${panel.channel_id || ''}">
+                    <input type="text" class="channel-id-input" value="${panel.channel_id || ''}">
                     <small class="server-name-display">${panel.server_name || '(Tên server sẽ hiện ở đây)'}</small>
                 </div>
                 <div class="account-slots">${accountSlotsHTML}</div>
@@ -613,14 +675,14 @@ document.addEventListener('DOMContentLoaded', function () {
             let timeString = new Date(countdown * 1000).toISOString().substr(11, 8);
             document.getElementById('countdown').textContent = timeString;
 
-            const toggleBtn = document.getElementById('toggle-sd-btn');
+            const toggleBtn = document.getElementById('toggle-drop-btn');
             if (toggleBtn) {
-                if (data.is_sd_loop_enabled) {
-                    toggleBtn.textContent = 'TẮT VÒNG LẶP SD';
+                if (data.is_auto_drop_enabled) {
+                    toggleBtn.innerHTML = '<i class="fas fa-pause"></i> TẮT Auto Drop';
                     toggleBtn.classList.remove('btn-danger');
                     document.getElementById('next-slot').style.color = 'var(--accent-color)';
                 } else {
-                    toggleBtn.textContent = 'BẬT VÒNG LẶP SD';
+                    toggleBtn.innerHTML = '<i class="fas fa-play"></i> BẬT Auto Drop';
                     toggleBtn.classList.add('btn-danger');
                     document.getElementById('next-slot').style.color = 'var(--danger-color)';
                 }
@@ -689,10 +751,10 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }, true);
 
-    const toggleBtn = document.getElementById('toggle-sd-btn');
+    const toggleBtn = document.getElementById('toggle-drop-btn');
     if (toggleBtn) {
         toggleBtn.addEventListener('click', async () => {
-            await fetch('/api/toggle_sd', { method: 'POST' });
+            await fetch('/api/toggle_drop', { method: 'POST' });
             updateStatus();
         });
     }
@@ -708,7 +770,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
 @app.route("/")
 def index():
-    global_accounts_json = json.dumps([{"name": acc["name"], "token": acc["token"]} for acc in GLOBAL_ACCOUNTS])
+    global_accounts_json = json.dumps([{"id": acc["id"], "name": acc["name"], "token": acc["token"]} for acc in GLOBAL_ACCOUNTS])
     return render_template_string(HTML_TEMPLATE, GLOBAL_ACCOUNTS_JSON=global_accounts_json)
 
 @app.route("/api/panels", methods=['GET', 'POST', 'PUT', 'DELETE'])
@@ -722,7 +784,7 @@ def handle_panels():
         name = data.get('name')
         if not name: return jsonify({"error": "Tên là bắt buộc"}), 400
         new_panel = {
-            "id": f"panel_{int(time.time())}_{random.randint(1000,9999)}",
+            "id": f"panel_{int(time.time())}",
             "name": name,
             "channel_id": "",
             "server_name": "",
@@ -761,63 +823,68 @@ def handle_panels():
         save_panels()
         return jsonify({"message": "Đã xóa panel"}), 200
 
-@app.route("/api/main_config", methods=['GET', 'POST'])
+@app.route("/api/main_config", methods=['GET', 'PUT'])
 def handle_main_config():
-    global main_account_config
+    global main_panel_config
     
     if request.method == 'GET':
-        return jsonify(main_account_config)
+        return jsonify(main_panel_config)
     
-    elif request.method == 'POST':
+    elif request.method == 'PUT':
         data = request.get_json()
-        main_account_config['enabled'] = data.get('enabled', False)
-        main_account_config['min_value'] = data.get('min_value', 1)
-        main_account_config['priority_emojis'] = data.get('priority_emojis', [])
+        main_panel_config['min_value'] = data.get('min_value', 0)
+        main_panel_config['priority_emojis'] = data.get('priority_emojis', [])
         save_panels()
-        return jsonify(main_account_config)
+        return jsonify(main_panel_config)
 
 @app.route("/status")
 def status():
-    remaining_time = 0
-    if is_sd_loop_enabled:
-        elapsed = time.time() - last_sd_cycle_time
-        remaining_time = max(0, 240 - elapsed)  # 4 phút = 240 giây
-    else:
-        remaining_time = 240
-
     return jsonify({
         "bot_ready": bot_ready,
         "panels": panels,
         "current_drop_slot": current_drop_slot,
-        "countdown": remaining_time,
-        "is_sd_loop_enabled": is_sd_loop_enabled
+        "countdown": 605,
+        "is_auto_drop_enabled": is_auto_drop_enabled
     })
     
-@app.route("/api/toggle_sd", methods=['POST'])
-def toggle_sd():
-    global is_sd_loop_enabled
-    is_sd_loop_enabled = not is_sd_loop_enabled
-    state = "BẬT" if is_sd_loop_enabled else "TẮT"
-    print(f"[CONTROL] Vòng lặp gửi 'sd' đã được {state}.")
-    return jsonify({"message": f"Vòng lặp gửi 'sd' đã được {state}.", "is_enabled": is_sd_loop_enabled})
+@app.route("/api/toggle_drop", methods=['POST'])
+def toggle_drop():
+    global is_auto_drop_enabled
+    is_auto_drop_enabled = not is_auto_drop_enabled
+    state = "BẬT" if is_auto_drop_enabled else "TẮT"
+    print(f"[CONTROL] Auto drop đã được {state}.")
+    return jsonify({"message": f"Auto drop đã được {state}.", "is_enabled": is_auto_drop_enabled})
 
 # --- HÀM KHỞI CHẠY CHÍNH ---
 
 async def main():
-    global last_sd_cycle_time
+    global last_drop_cycle_time
     
-    if not TOKENS_STR:
-        print("Lỗi: Biến môi trường TOKENS chưa được thiết lập.")
+    if not TOKENS_STR and not TOKEN_MAIN:
+        print("❌ Lỗi: Không có token nào được cấu hình. Vui lòng thêm TOKEN_MAIN hoặc TOKENS vào file .env.")
         return
 
+    print("\n" + "="*60)
+    print("🚀 KHỞI ĐỘNG MULTI-SOFI SMART CONTROL v4.0")
+    print("="*60)
+    
+    if main_account:
+        print(f"👑 Main Account: {main_account['name']}")
+        print(f"   - Có khả năng phân tích button thông minh")
+        print(f"   - Tự động chọn button tốt nhất theo cấu hình")
+    
+    print(f"📊 Tổng số tài khoản: {len(GLOBAL_ACCOUNTS)}")
+    print(f"🎯 Bot Sofi ID: {SOFI_ID}")
+    print("="*60 + "\n")
+
     load_panels()
-    last_sd_cycle_time = time.time()
+    last_drop_cycle_time = time.time()
 
     def run_flask():
         try:
             from waitress import serve
             port = int(os.environ.get("PORT", 10000))
-            print(f"Khởi động Web Server tại http://0.0.0.0:{port}")
+            print(f"🌐 Khởi động Web Server tại http://0.0.0.0:{port}")
             serve(app, host="0.0.0.0", port=port)
         except Exception as e:
             print(f"[FLASK ERROR] Không thể khởi động server: {e}")
@@ -825,38 +892,27 @@ async def main():
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
     
-    async def sd_sender_loop(session):
-        global current_drop_slot, last_sd_cycle_time, bot_ready
-        print("Vòng lặp gửi 'sd' đang chờ các bot sẵn sàng...")
-        
-        # Đợi tất cả bot đăng nhập
-        max_wait = 60  # Đợi tối đa 60 giây
-        waited = 0
-        while len(running_bots) < len(GLOBAL_ACCOUNTS) and waited < max_wait:
+    async def updated_drop_sender_loop(session):
+        global current_drop_slot, last_drop_cycle_time
+        print("⏳ Vòng lặp gửi 'sd' đang chờ BOT LẮNG NGHE sẵn sàng...")
+        while not bot_ready:
             await asyncio.sleep(1)
-            waited += 1
-        
-        if len(running_bots) == 0:
-            print("⚠️ Không có bot nào đăng nhập thành công!")
-            bot_ready = True
-            return
-        
-        bot_ready = True
-        print(f"✅ Đã có {len(running_bots)}/{len(GLOBAL_ACCOUNTS)} bot sẵn sàng. Bắt đầu vòng lặp gửi 'sd'.")
+        print("✅ Bot lắng nghe đã sẵn sàng. Bắt đầu vòng lặp gửi 'sd'.\n")
     
         while True:
-            if not is_sd_loop_enabled:
+            if not is_auto_drop_enabled:
                 await asyncio.sleep(5)
-                last_sd_cycle_time = time.time()
+                last_drop_cycle_time = time.time()
                 continue
             
             try:
                 slot_key = f"slot_{current_drop_slot + 1}"
-                print(f"\n--- Đang trong lượt của Slot {current_drop_slot + 1} ---")
+                print(f"\n{'='*60}")
+                print(f"🎲 ĐANG TRONG LƯỢT CỦA SLOT {current_drop_slot + 1}")
+                print(f"{'='*60}")
     
                 tasks = []
                 active_sends = 0
-                
                 for panel in panels:
                     channel_id = panel.get("channel_id")
                     token_to_use = panel.get("accounts", {}).get(slot_key)
@@ -867,72 +923,65 @@ async def main():
                         active_sends += 1
                 
                 if tasks:
-                    print(f"Bắt đầu gửi {active_sends} lệnh 'sd' cho {slot_key}...")
+                    print(f"📤 Bắt đầu gửi {active_sends} lệnh 'sd' cho {slot_key}...")
                     for task in tasks:
                         try:
                             await task
-                            await asyncio.sleep(0.5)  # Tăng delay để tránh spam
+                            await asyncio.sleep(0.5)  # Giãn cách để tránh spam
                         except Exception as e:
                             print(f"[SEND TASK ERROR] Lỗi khi gửi 1 task 'sd': {e}")
                             
-                    print(f"Đã gửi xong {active_sends} lệnh cho {slot_key}.")
+                    print(f"✅ Đã gửi xong {active_sends} lệnh cho {slot_key}.")
                 else:
-                    print(f"Không có tài khoản nào được cấu hình cho {slot_key}.")
+                    print(f"⚠️ Không có tài khoản nào được cấu hình cho {slot_key}.")
     
                 current_drop_slot = (current_drop_slot + 1) % 3
     
-                print(f"Đã xong lượt. Chờ 240 giây (4 phút) cho lượt kế tiếp (Slot {current_drop_slot + 1})...")
-                last_sd_cycle_time = time.time()
-                await asyncio.sleep(240)  # 4 phút
+                print(f"⏰ Đã xong lượt. Chờ 240 giây (4 phút) cho lượt kế tiếp (Slot {current_drop_slot + 1})...")
+                print(f"{'='*60}\n")
+                
+                last_drop_cycle_time = time.time()
+                await asyncio.sleep(240)  # 4 phút = 240 giây
     
             except Exception as e:
-                print(f"[SD SENDER ERROR] Lỗi nghiêm trọng trong vòng lặp gửi 'sd': {e}")
+                print(f"[DROP SENDER ERROR] Lỗi nghiêm trọng trong vòng lặp gửi 'sd': {e}")
                 await asyncio.sleep(60)
 
-    # Khởi tạo AIOHTTP ClientSession
-    async with aiohttp.ClientSession() as session:
-        # Tạo task cho vòng lặp gửi 'sd'
-        sender_task = asyncio.create_task(sd_sender_loop(session), name='sd_sender_loop')
-        
-        # Tạo task để chạy tất cả listener bots
-        listener_task = asyncio.create_task(start_all_listener_bots(), name='all_listener_bots')
+    @app.route("/status")
+    def updated_status():
+        remaining_time = 0
+        if is_auto_drop_enabled:
+            elapsed = time.time() - last_drop_cycle_time
+            remaining_time = max(0, 240 - elapsed)  # 240 giây = 4 phút
+        else:
+            remaining_time = 240
 
-        # Chạy đồng thời 2 task chính
-        await asyncio.gather(sender_task, listener_task, return_exceptions=True)
+        return jsonify({
+            "bot_ready": bot_ready,
+            "panels": panels,
+            "current_drop_slot": current_drop_slot,
+            "countdown": remaining_time,
+            "is_auto_drop_enabled": is_auto_drop_enabled
+        })
+    
+    app.view_functions['status'] = updated_status
+
+    async with aiohttp.ClientSession() as session:
+        sender_task = asyncio.create_task(updated_drop_sender_loop(session), name='drop_sender_loop')
+        listener_task = asyncio.create_task(run_listener_bot(session), name='listener_bot')
+        await asyncio.gather(sender_task, listener_task)
 
 
 if __name__ == "__main__":
-    # Kiểm tra và cài đặt dependencies
     try:
         import waitress
     except ImportError:
-        print("Đang cài đặt waitress...")
+        print("⏳ Đang cài đặt waitress...")
         os.system('pip install waitress')
-    
     try:
         import aiohttp
     except ImportError:
-        print("Đang cài đặt aiohttp...")
+        print("⏳ Đang cài đặt aiohttp...")
         os.system('pip install aiohttp')
-    
-    try:
-        import discord
-    except ImportError:
-        print("Đang cài đặt discord.py-self...")
-        os.system('pip install discord.py-self')
         
-    print("=" * 60)
-    print("🚀 MULTI-FARM DEEP CONTROL V4.0 - SOFI EDITION")
-    print("=" * 60)
-    print("📋 Tính năng:")
-    print("  ✅ Tự động gửi 'sd' mỗi 4 phút")
-    print("  ✅ Click button với delay 6 giây")
-    print("  ✅ Smart Grab cho Account Main:")
-    print("     - Ưu tiên button có emoji được chỉ định")
-    print("     - Chọn button có số cao nhất nếu không có emoji")
-    print("     - Chỉ nhặt button >= giá trị tối thiểu")
-    print("  ✅ Account Main có thể tham gia tất cả các panel")
-    print("  ✅ Quản lý đa panel qua giao diện web")
-    print("=" * 60)
-    
     asyncio.run(main())
