@@ -194,10 +194,12 @@ def analyze_button_priority(button, config):
     return (priority_score, value if value else 0)
 
 async def smart_button_click_main(message, bot, config):
-    await asyncio.sleep(3)
+    await asyncio.sleep(2.0) # Bạn có thể chỉnh lại sleep time ở đây
     
     try:
-        print(f"[MAIN] 🧠 Đang phân tích button...")
+        # --- LOG MỚI ---
+        print(f"[MAIN] 🧠 Bắt đầu phân tích button cho tin nhắn {message.id}")
+        # --- KẾT THÚC LOG MỚI ---
         
         fetched_message = None
         found_buttons = []
@@ -213,16 +215,20 @@ async def smart_button_click_main(message, bot, config):
                             found_buttons.append(component)
                 
                 if len(found_buttons) >= 3:
+                    # --- LOG MỚI ---
+                    print(f"[MAIN] ✅ Đã tìm thấy {len(found_buttons)} buttons.")
+                    # --- KẾT THÚC LOG MỚI ---
                     break
             except:
                 pass
             await asyncio.sleep(1)
         
         if not found_buttons:
-            print(f"[MAIN] ❌ Không tìm thấy button nào")
+            print(f"[MAIN] ❌ Không tìm thấy button nào sau 5 lần thử.")
             return None
         
         button_analysis = []
+        print("[MAIN] --- BẮT ĐẦU PHÂN TÍCH NỘI DUNG BUTTON ---") # Log chi tiết hơn
         for idx, btn in enumerate(found_buttons):
             priority, value = analyze_button_priority(btn, config)
             button_analysis.append({
@@ -233,7 +239,10 @@ async def smart_button_click_main(message, bot, config):
                 "label": btn.label or "No label",
                 "emoji": str(btn.emoji) if btn.emoji else ""
             })
-            print(f"[MAIN] 📊 Button {idx+1}: {btn.label} | Emoji: {btn.emoji} | Value: {value} | Priority: {priority}")
+            # --- LOG CHI TIẾT HƠN ---
+            print(f"[MAIN] 📊 Button {idx+1}: Label='{btn.label}' | Emoji='{btn.emoji}' | Value={value} | Priority={priority}")
+            # --- KẾT THÚC LOG ---
+        print("[MAIN] --- KẾT THÚC PHÂN TÍCH ---") # Log chi tiết hơn
         
         button_analysis.sort(key=lambda x: x["priority"])
         
@@ -247,8 +256,9 @@ async def smart_button_click_main(message, bot, config):
         
         if best_button:
             print(f"[MAIN] ✅ Chọn button: {best_button['label']} (Value: {best_button['value']})")
+            print(f"[MAIN] 🖱️ ĐANG GỬI LỆNH CLICK...") # Log mới
             await best_button["button"].click()
-            print(f"[MAIN] 🖱️ ĐÃ CLICK!")
+            print(f"[MAIN] 🖱️ ĐÃ GỬI XONG LỆNH CLICK!") # Log mới
             
             detected_buttons_cache[str(message.channel.id)] = {
                 "message_id": message.id,
@@ -262,14 +272,14 @@ async def smart_button_click_main(message, bot, config):
             return None
             
     except Exception as e:
-        print(f"[MAIN] ❌ Lỗi khi phân tích button: {e}")
+        print(f"[MAIN] ❌ Lỗi khi phân tích hoặc click button: {e}") # Log chi tiết hơn
         return None
 
 async def handle_button_click_follower(message, bot, account_info, grab_index, delay):
     await asyncio.sleep(delay)
     
     try:
-        print(f"[{account_info['name']}] 🎯 Đang tìm button vị trí {grab_index+1}...")
+        print(f"[{account_info['name']}] 🎯 Đang tìm button vị trí {grab_index+1} cho tin nhắn {message.id}...")
         
         fetched_message = None
         found_buttons = []
@@ -285,6 +295,9 @@ async def handle_button_click_follower(message, bot, account_info, grab_index, d
                             found_buttons.append(component)
                 
                 if len(found_buttons) >= 3:
+                    # --- LOG MỚI ---
+                    print(f"[{account_info['name']}] ✅ Đã tìm thấy {len(found_buttons)} buttons.")
+                    # --- KẾT THÚC LOG MỚI ---
                     break
             except:
                 pass
@@ -292,14 +305,20 @@ async def handle_button_click_follower(message, bot, account_info, grab_index, d
         
         if len(found_buttons) > grab_index:
             target_button = found_buttons[grab_index]
+            # --- LOG MỚI ---
+            print(f"[{account_info['name']}] ℹ️ Button mục tiêu (vị trí {grab_index+1}): Label='{target_button.label}', Emoji='{target_button.emoji}'")
+            print(f"[{account_info['name']}] 🖱️ ĐANG GỬI LỆNH CLICK...")
+            # --- KẾT THÚC LOG MỚI ---
+            
             await target_button.click()
-            print(f"[{account_info['name']}] 🖱️ ĐÃ CLICK button vị trí {grab_index+1}!")
+            
+            print(f"[{account_info['name']}] 🖱️ ĐÃ GỬI XONG LỆNH CLICK!") # Log mới
         else:
-            print(f"[{account_info['name']}] ❌ Không tìm thấy button vị trí {grab_index+1}")
+            print(f"[{account_info['name']}] ❌ Không tìm thấy button vị trí {grab_index+1} (Tìm thấy {len(found_buttons)} buttons).")
             
     except Exception as e:
-        print(f"[{account_info['name']}] ⚠️ Lỗi click: {e}")
-
+        print(f"[{account_info['name']}] ⚠️ Lỗi khi click: {e}") # Log chi tiết hơn
+        
 async def handle_drop_detection(message, panel):
     accounts_in_panel = panel.get("accounts", {})
     
@@ -387,6 +406,10 @@ async def run_listener_bot(session):
         content = message.content.lower()
         
         if "dropping" in content or "thả" in content or "drop" in content:
+            # --- LOG MỚI ---
+            print(f"[DEBUG] -> Phát hiện từ khóa drop trong kênh {message.channel.id}: {content[:50]}")
+            # --- KẾT THÚC LOG MỚI ---
+            
             found_panel = None
             for p in panels:
                 if p.get("channel_id") == str(message.channel.id):
@@ -399,6 +422,10 @@ async def run_listener_bot(session):
                 print(f"📝 Nội dung: {message.content[:100]}")
                 print(f"{'='*60}")
                 asyncio.create_task(handle_drop_detection(message, found_panel))
+            # --- LOG MỚI ---
+            else:
+                print(f"[DEBUG] -> Đã thấy drop, nhưng kênh {message.channel.id} không nằm trong panel nào.")
+            # --- KẾT THÚC LOG MỚI ---
 
     try:
         await listener_bot.start(listener_token)
