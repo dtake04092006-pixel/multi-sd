@@ -78,7 +78,35 @@ async def send_message_http_async(session, token, channel_id, content):
         print(f"[HTTP SEND EXCEPTION] Lỗi ngoại lệ khi gửi tin nhắn: {e}")
 
 # --- LƯU & TẢI CẤU HÌNH PANEL ---
-
+async def click_button_http_async(session, token, channel_id, message_id, guild_id, custom_id):
+    if not token: return
+    
+    headers = SPOOFED_HEADERS.copy()
+    headers["Authorization"] = token
+    
+    payload = {
+        "type": 3, # Loại tương tác: bấm component
+        "application_id": str(SOFI_ID),
+        "guild_id": str(guild_id) if guild_id else None,
+        "channel_id": str(channel_id),
+        "message_id": str(message_id),
+        "session_id": "0", # Self-bot có thể dùng session_id đơn giản
+        "data": {
+            "component_type": 2, # Loại component: button
+            "custom_id": custom_id
+        }
+    }
+    
+    url = "https://discord.com/api/v9/interactions"
+    try:
+        async with session.post(url, headers=headers, json=payload, timeout=10) as res:
+            if res.status == 204: # 204 No Content là thành công
+                print(f"[HTTP CLICK] ✅ Token {token[:5]}... đã click thành công (HTTP 204)")
+            else:
+                print(f"[HTTP CLICK ERROR] ❌ Token {token[:5]}... Lỗi khi click: {res.status} - {await res.text()}")
+    except Exception as e:
+        print(f"[HTTP CLICK EXCEPTION] ❌ Token {token[:5]}... Lỗi ngoại lệ khi click: {e}")
+        
 def save_panels():
     api_key = os.getenv("JSONBIN_API_KEY")
     bin_id = os.getenv("JSONBIN_BIN_ID")
@@ -298,8 +326,8 @@ async def handle_button_click_follower(message, bot, account_info, grab_index, d
         fetched_message = None
         found_buttons = []
         
-        # --- BẮT ĐẦU SỬA ĐỔI: Phục hồi vòng lặp 5 lần ---
         # 2. Vẫn "hỏi" 5 lần, mỗi lần cách 1 giây
+        #    Việc này vẫn do Acc Main làm, vì chỉ nó mới "thấy" message object
         for attempt in range(5):
             try:
                 fetched_message = await message.channel.fetch_message(message.id)
@@ -311,12 +339,11 @@ async def handle_button_click_follower(message, bot, account_info, grab_index, d
                             found_buttons.append(component)
                 
                 if len(found_buttons) >= 3:
-                    print(f"[{account_info['name']}] ✅ Đã tìm thấy {len(found_buttons)} buttons (Lần thử {attempt+1}/5).")
+                    print(f"[{account_info['name']}] ✅ (Main) Đã tìm thấy {len(found_buttons)} buttons (Lần thử {attempt+1}/5).")
                     break # Thoát vòng lặp khi tìm thấy
             except:
                 pass # Bỏ qua lỗi và thử lại
             await asyncio.sleep(1) # Chờ 1 giây trước khi thử lại
-        # --- KẾT THÚC SỬA ĐỔI ---
         
         if len(found_buttons) > grab_index:
             target_button = found_buttons[grab_index]
@@ -326,17 +353,32 @@ async def handle_button_click_follower(message, bot, account_info, grab_index, d
                 print(f"[{account_info['name']}] ⚠️ Bỏ qua button 'Join Sofi Cafe' (vị trí {grab_index+1})")
                 return
 
-            print(f"[{account_info['name']}] ℹ️ Button mục tiêu (vị trí {grab_index+1}): Label='{target_button.label}', Emoji='{target_button.emoji}'")
-            print(f"[{account_info['name']}] 🖱️ ĐANG GỬI LỆNH CLICK...")
+            print(f"[{account_info['name']}] ℹ️ (Main) Button mục tiêu: Label='{target_button.label}', Emoji='{target_button.emoji}'")
             
-            await target_button.click()
+            # --- BẮT ĐẦU SỬA ĐỔI QUAN TRỌNG ---
+            # Lấy thông tin cần thiết cho Acc Phụ
+            follower_token = account_info['token']
+            channel_id = message.channel.id
+            message_id = message.id
+            guild_id = message.guild.id if message.guild else None
+            custom_id = target_button.custom_id # Đây là chìa khóa
             
-            print(f"[{account_info['name']}] 🖱️ ĐÃ GỬI XONG LỆNH CLICK!")
+            print(f"[{account_info['name']}] 🖱️ ĐANG CHUYỂN GIAO LỆNH CLICK CHO ACC PHỤ (Token: {follower_token[:5]}...)")
+            
+            # Acc Phụ tự click qua HTTP
+            async with aiohttp.ClientSession() as session:
+                await click_button_http_async(session, follower_token, channel_id, message_id, guild_id, custom_id)
+            
+            # Bỏ lệnh click của Acc Main (NGUYÊN NHÂN GÂY LỖI)
+            # await target_button.click() 
+            # --- KẾT THÚC SỬA ĐỔI ---
+
+            print(f"[{account_info['name']}] 🖱️ ĐÃ GỬI XONG LỆNH CLICK TỪ ACC PHỤ!")
         else:
-            print(f"[{account_info['name']}] ❌ Không tìm thấy button vị trí {grab_index+1} (Tìm thấy {len(found_buttons)} buttons sau 5 lần thử).")
+            print(f"[{account_info['name']}] ❌ (Main) Không tìm thấy button vị trí {grab_index+1} (Tìm thấy {len(found_buttons)} buttons sau 5 lần thử).")
             
     except Exception as e:
-        print(f"[{account_info['name']}] ⚠️ Lỗi khi click: {e}")
+        print(f"[{account_info['name']}] ⚠️ Lỗi trong hàm follower (Lỗi của Main): {e}")
         
 async def handle_drop_detection(message, panel):
     accounts_in_panel = panel.get("accounts", {})
