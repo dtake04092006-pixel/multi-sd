@@ -402,11 +402,14 @@ async def run_listener_bot(session):
     
     listener_token = GLOBAL_ACCOUNTS[0]["token"]
     
-    # SỬA: Không cần intents cho self-bot
+    # ✅ Không cần intents cho self-bot với discord.py-self
     listener_bot = commands.Bot(
         command_prefix="!слушать",
         self_bot=True
     )
+    
+    # ✅ Tắt tất cả cache không cần thiết
+    listener_bot.chunk_guilds_at_startup = False
 
     @listener_bot.event
     async def on_ready():
@@ -777,16 +780,19 @@ def index():
 
 @app.route("/api/panels", methods=['GET', 'POST', 'PUT', 'DELETE'])
 def handle_panels():
-    global panels
+    global panels  # ✅ QUAN TRỌNG: Thêm global ở đầu hàm
+    
     if request.method == 'GET':
         return jsonify(panels)
 
     elif request.method == 'POST':
         data = request.get_json()
         name = data.get('name')
-        if not name: return jsonify({"error": "Tên là bắt buộc"}), 400
+        if not name: 
+            return jsonify({"error": "Tên là bắt buộc"}), 400
+        
         new_panel = {
-            "id": f"panel_{int(time.time())}",
+            "id": f"panel_{int(time.time())}_{random.randint(1000, 9999)}",  # ✅ Thêm random để tránh trùng
             "name": name,
             "channel_id": "",
             "server_name": "",
@@ -794,16 +800,20 @@ def handle_panels():
         }
         panels.append(new_panel)
         save_panels()
+        print(f"[API] Đã tạo panel mới: {name}")  # ✅ Log để debug
         return jsonify(new_panel), 201
 
     elif request.method == 'PUT':
         data = request.get_json()
         panel_id = data.get('id')
         update_data = data.get('update')
+        
         panel_to_update = next((p for p in panels if p.get('id') == panel_id), None)
-        if not panel_to_update: return jsonify({"error": "Không tìm thấy panel"}), 404
+        if not panel_to_update: 
+            return jsonify({"error": "Không tìm thấy panel"}), 404
 
-        if 'name' in update_data: panel_to_update['name'] = update_data['name']
+        if 'name' in update_data: 
+            panel_to_update['name'] = update_data['name']
 
         if 'channel_id' in update_data:
             new_channel_id = update_data['channel_id'].strip()
@@ -816,13 +826,18 @@ def handle_panels():
                 panel_to_update['accounts'][slot] = token
 
         save_panels()
+        print(f"[API] Đã cập nhật panel: {panel_id}")  # ✅ Log để debug
         return jsonify(panel_to_update)
 
     elif request.method == 'DELETE':
         data = request.get_json()
         panel_id = data.get('id')
-        panels = [p for p in panels if p.get('id') != panel_id]
+        
+        # ✅ FIX: Phải dùng global và không gán trực tiếp
+        panels[:] = [p for p in panels if p.get('id') != panel_id]
+        
         save_panels()
+        print(f"[API] Đã xóa panel: {panel_id}")  # ✅ Log để debug
         return jsonify({"message": "Đã xóa panel"}), 200
 
 @app.route("/api/main_config", methods=['GET', 'PUT'])
