@@ -147,11 +147,7 @@ def get_server_name_from_channel(channel_id):
     headers["Authorization"] = token
 
     try:
-        channel_res = requests.get(
-            f"https://discord.com/api/v9/channels/{channel_id}", 
-            headers=headers, 
-            timeout=5  # GIẢM TIMEOUT TỪ 10 XUỐNG 5
-        )
+        channel_res = requests.get(f"https://discord.com/api/v9/channels/{channel_id}", headers=headers, timeout=10)
         if channel_res.status_code != 200:
             return "Không tìm thấy kênh"
 
@@ -161,11 +157,7 @@ def get_server_name_from_channel(channel_id):
         if not guild_id:
             return "Đây là kênh DM/Group"
 
-        guild_res = requests.get(
-            f"https://discord.com/api/v9/guilds/{guild_id}", 
-            headers=headers, 
-            timeout=5  # GIẢM TIMEOUT
-        )
+        guild_res = requests.get(f"https://discord.com/api/v9/guilds/{guild_id}", headers=headers, timeout=10)
         if guild_res.status_code == 200:
             return guild_res.json().get("name", "Không thể lấy tên server")
         else:
@@ -173,6 +165,7 @@ def get_server_name_from_channel(channel_id):
 
     except requests.RequestException:
         return "Lỗi mạng"
+
 # --- LOGIC PHÂN TÍCH BUTTON THÔNG MINH (CHO MAIN ACCOUNT) ---
 
 def extract_number_from_text(text):
