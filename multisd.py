@@ -408,13 +408,22 @@ async def run_listener_bot(session):
     intents.guild_messages = True
     intents.message_content = True
     
-    listener_bot = commands.Bot(
-        command_prefix="!слушать",
-        self_bot=True,
-        intents=intents,
-        chunk_guilds_at_startup=False,
-        member_cache_flags=discord.MemberCacheFlags.none()
-    )
+    try:
+        listener_bot = commands.Bot(
+            command_prefix="!слушать",
+            self_bot=True,
+            intents=intents,
+            chunk_guilds_at_startup=False,
+            member_cache_flags=discord.MemberCacheFlags.none()
+        )
+    except TypeError:
+        # Nếu self_bot không được hỗ trợ, thử không dùng nó
+        listener_bot = commands.Bot(
+            command_prefix="!слушать",
+            intents=intents,
+            chunk_guilds_at_startup=False,
+            member_cache_flags=discord.MemberCacheFlags.none()
+        )
 
     @listener_bot.event
     async def on_ready():
