@@ -219,7 +219,7 @@ async def smart_button_click_main(message, bot, config):
     - Chọn button có giá trị cao nhất
     - Kiểm tra giá trị tối thiểu
     """
-    await asyncio.sleep(6)  # Delay 6 giây như yêu cầu
+    await asyncio.sleep(2)  # Delay 6 giây như yêu cầu
     
     try:
         print(f"[MAIN] 🧠 Đang phân tích button...")
