@@ -247,29 +247,48 @@ async def smart_button_click_main(message, bot, config):
         button_analysis.sort(key=lambda x: x["priority"])
         
         min_value = config.get("min_value", 0)
-        best_button = None
         
+        # --- BẮT ĐẦU LOGIC MỚI ---
         for btn_info in button_analysis:
+            # 1. KIỂM TRA AN TOÀN (Goal 2: Không click "Join Sofi Cafe")
+            if "Join Sofi Cafe" in btn_info["label"]:
+                print(f"[MAIN] ⚠️ Bỏ qua button 'Join Sofi Cafe'")
+                continue # Chuyển sang button tiếp theo
+
+            # 2. KIỂM TRA EMOJI ƯU TIÊN (Goal 1: Thấy là nhặt)
+            # (priority < 10000 nghĩa là đã tìm thấy emoji ưu tiên)
+            if btn_info["priority"] < 10000:
+                print(f"[MAIN] ✅ ƯU TIÊN EMOJI! Chọn: {btn_info['label']} (Bỏ qua min_value)")
+                print(f"[MAIN] 🖱️ ĐANG GỬI LỆNH CLICK...")
+                await btn_info["button"].click()
+                print(f"[MAIN] 🖱️ ĐÃ GỬI XONG LỆNH CLICK!")
+                
+                detected_buttons_cache[str(message.channel.id)] = {
+                    "message_id": message.id,
+                    "best_index": btn_info["index"],
+                    "timestamp": time.time()
+                }
+                return btn_info["index"] # Click và thoát
+
+            # 3. KIỂM TRA GIÁ TRỊ TỐI THIỂU (Logic cũ)
+            # Chỉ chạy nếu không có emoji ưu tiên
             if btn_info["value"] >= min_value:
-                best_button = btn_info
-                break
-        
-        if best_button:
-            print(f"[MAIN] ✅ Chọn button: {best_button['label']} (Value: {best_button['value']})")
-            print(f"[MAIN] 🖱️ ĐANG GỬI LỆNH CLICK...") # Log mới
-            await best_button["button"].click()
-            print(f"[MAIN] 🖱️ ĐÃ GỬI XONG LỆNH CLICK!") # Log mới
-            
-            detected_buttons_cache[str(message.channel.id)] = {
-                "message_id": message.id,
-                "best_index": best_button["index"],
-                "timestamp": time.time()
-            }
-            
-            return best_button["index"]
-        else:
-            print(f"[MAIN] ⚠️ Không có button nào thỏa mãn điều kiện (min_value: {min_value})")
-            return None
+                print(f"[MAIN] ✅ Chọn button theo giá trị: {btn_info['label']} (Value: {btn_info['value']})")
+                print(f"[MAIN] 🖱️ ĐANG GỬI LỆNH CLICK...")
+                await btn_info["button"].click()
+                print(f"[MAIN] 🖱️ ĐÃ GỬI XONG LỆNH CLICK!")
+                
+                detected_buttons_cache[str(message.channel.id)] = {
+                    "message_id": message.id,
+                    "best_index": btn_info["index"],
+                    "timestamp": time.time()
+                }
+                return btn_info["index"] # Click và thoát
+
+        # Nếu vòng lặp kết thúc mà không click gì
+        print(f"[MAIN] ⚠️ Không có button nào thỏa mãn điều kiện (min_value: {min_value} và đã lọc 'Join Sofi Cafe')")
+        return None
+        # --- KẾT THÚC LOGIC MỚI ---
             
     except Exception as e:
         print(f"[MAIN] ❌ Lỗi khi phân tích hoặc click button: {e}") # Log chi tiết hơn
@@ -305,6 +324,14 @@ async def handle_button_click_follower(message, bot, account_info, grab_index, d
         
         if len(found_buttons) > grab_index:
             target_button = found_buttons[grab_index]
+            
+            # --- LOGIC MỚI: KIỂM TRA AN TOÀN ---
+            button_label = target_button.label or ""
+            if "Join Sofi Cafe" in button_label:
+                print(f"[{account_info['name']}] ⚠️ Bỏ qua button 'Join Sofi Cafe' (vị trí {grab_index+1})")
+                return
+            # --- KẾT THÚC LOGIC MỚI ---
+
             # --- LOG MỚI ---
             print(f"[{account_info['name']}] ℹ️ Button mục tiêu (vị trí {grab_index+1}): Label='{target_button.label}', Emoji='{target_button.emoji}'")
             print(f"[{account_info['name']}] 🖱️ ĐANG GỬI LỆNH CLICK...")
