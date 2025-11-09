@@ -407,6 +407,7 @@ async def run_listener_bot(session):
         self_bot=True,
         chunk_guilds_at_startup=False,
         member_cache_flags=discord.MemberCacheFlags.none()
+        intents=intents
     )
 
     @listener_bot.event
