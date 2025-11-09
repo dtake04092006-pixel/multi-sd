@@ -20,7 +20,7 @@ load_dotenv()
 SOFI_ID = 853629533855809596
 
 # Tải danh sách tài khoản từ biến môi trường
-TOKEN_MAIN = os.getenv("TOKEN_MAIN", "")  # Token chính - có khả năng đọc và phân tích
+TOKEN_MAIN = os.getenv("TOKEN_MAIN", "")
 TOKENS_STR = os.getenv("TOKENS", "")
 ACC_NAMES_STR = os.getenv("ACC_NAMES", "")
 
@@ -42,8 +42,8 @@ for i, token in enumerate(tokens_list):
 # Biến trạng thái
 panels = []
 main_panel_config = {
-    "min_value": 0,  # Giá trị tối thiểu để nhặt
-    "priority_emojis": []  # Danh sách emoji ưu tiên
+    "min_value": 0,
+    "priority_emojis": []
 }
 current_drop_slot = 0
 is_auto_drop_enabled = True
@@ -51,10 +51,9 @@ bot_ready = False
 listener_bot = None
 last_drop_cycle_time = 0
 
-# Bộ nhớ lưu thông tin button từ Main Account
 detected_buttons_cache = {}
 
-# --- CÁC HÀM TIỆN ÍCH & API DISCORD (AIOHTTP + SPOOFING) ---
+# --- CÁC HÀM TIỆN ÍCH & API DISCORD ---
 
 SPOOFED_HEADERS = {
     "Origin": "https://discord.com",
@@ -64,7 +63,6 @@ SPOOFED_HEADERS = {
 }
 
 async def send_message_http_async(session, token, channel_id, content):
-    """Gửi tin nhắn bằng AIOHTTP + Spoofed Headers (non-blocking)."""
     if not token or not channel_id: return
     
     headers = SPOOFED_HEADERS.copy()
@@ -82,7 +80,6 @@ async def send_message_http_async(session, token, channel_id, content):
 # --- LƯU & TẢI CẤU HÌNH PANEL ---
 
 def save_panels():
-    """Lưu cấu hình các panel lên JSONBin.io"""
     api_key = os.getenv("JSONBIN_API_KEY")
     bin_id = os.getenv("JSONBIN_BIN_ID")
     if not api_key or not bin_id:
@@ -109,7 +106,6 @@ def save_panels():
         print(f"[Settings] Exception khi lưu cài đặt: {e}")
 
 def load_panels():
-    """Tải cấu hình các panel từ JSONBin.io"""
     global panels, main_panel_config
     api_key = os.getenv("JSONBIN_API_KEY")
     bin_id = os.getenv("JSONBIN_BIN_ID")
@@ -136,7 +132,6 @@ def load_panels():
         print(f"[Settings] Exception khi tải cài đặt: {e}")
 
 def get_server_name_from_channel(channel_id):
-    """Lấy tên server từ Channel ID thông qua Discord API."""
     if not channel_id or not channel_id.isdigit():
         return "ID kênh không hợp lệ"
     if not GLOBAL_ACCOUNTS:
@@ -166,60 +161,40 @@ def get_server_name_from_channel(channel_id):
     except requests.RequestException:
         return "Lỗi mạng"
 
-# --- LOGIC PHÂN TÍCH BUTTON THÔNG MINH (CHO MAIN ACCOUNT) ---
+# --- LOGIC PHÂN TÍCH BUTTON THÔNG MINH ---
 
 def extract_number_from_text(text):
-    """Trích xuất số từ text (VD: '★5 Character' -> 5)"""
     if not text:
         return None
-    # Tìm tất cả các số trong text
     numbers = re.findall(r'\d+', text)
     if numbers:
         return int(numbers[0])
     return None
 
 def analyze_button_priority(button, config):
-    """
-    Phân tích độ ưu tiên của button dựa trên:
-    1. Emoji ưu tiên
-    2. Giá trị số (nếu có)
-    Trả về: (priority_score, value)
-    """
     emoji_str = str(button.emoji) if button.emoji else ""
     label = button.label or ""
     
-    # Kiểm tra emoji ưu tiên
     emoji_priority = -1
     for idx, priority_emoji in enumerate(config.get("priority_emojis", [])):
         if priority_emoji in emoji_str or priority_emoji in label:
             emoji_priority = idx
             break
     
-    # Trích xuất giá trị số
     value = extract_number_from_text(label)
     
-    # Tính điểm ưu tiên
-    # Emoji match = ưu tiên cao nhất (điểm càng thấp càng ưu tiên)
-    # Không match emoji = dựa vào giá trị số
     if emoji_priority >= 0:
-        priority_score = emoji_priority * 1000  # Emoji ưu tiên luôn cao hơn
+        priority_score = emoji_priority * 1000
     else:
-        priority_score = 10000  # Không có emoji ưu tiên
+        priority_score = 10000
     
-    # Thêm giá trị số (số càng cao, priority_score càng thấp)
     if value is not None:
         priority_score -= value
     
     return (priority_score, value if value else 0)
 
 async def smart_button_click_main(message, bot, config):
-    """
-    Main Account: Phân tích và click button thông minh
-    - Ưu tiên emoji theo danh sách
-    - Chọn button có giá trị cao nhất
-    - Kiểm tra giá trị tối thiểu
-    """
-    await asyncio.sleep(6)  # Delay 6 giây như yêu cầu
+    await asyncio.sleep(6)
     
     try:
         print(f"[MAIN] 🧠 Đang phân tích button...")
@@ -247,7 +222,6 @@ async def smart_button_click_main(message, bot, config):
             print(f"[MAIN] ❌ Không tìm thấy button nào")
             return None
         
-        # Phân tích từng button
         button_analysis = []
         for idx, btn in enumerate(found_buttons):
             priority, value = analyze_button_priority(btn, config)
@@ -261,10 +235,8 @@ async def smart_button_click_main(message, bot, config):
             })
             print(f"[MAIN] 📊 Button {idx+1}: {btn.label} | Emoji: {btn.emoji} | Value: {value} | Priority: {priority}")
         
-        # Sắp xếp theo độ ưu tiên (priority thấp = ưu tiên cao)
         button_analysis.sort(key=lambda x: x["priority"])
         
-        # Chọn button tốt nhất thỏa mãn điều kiện min_value
         min_value = config.get("min_value", 0)
         best_button = None
         
@@ -278,7 +250,6 @@ async def smart_button_click_main(message, bot, config):
             await best_button["button"].click()
             print(f"[MAIN] 🖱️ ĐÃ CLICK!")
             
-            # Lưu thông tin để các account khác sử dụng
             detected_buttons_cache[str(message.channel.id)] = {
                 "message_id": message.id,
                 "best_index": best_button["index"],
@@ -295,9 +266,6 @@ async def smart_button_click_main(message, bot, config):
         return None
 
 async def handle_button_click_follower(message, bot, account_info, grab_index, delay):
-    """
-    Các account theo sau: Click button theo chỉ định của panel
-    """
     await asyncio.sleep(delay)
     
     try:
@@ -333,11 +301,6 @@ async def handle_button_click_follower(message, bot, account_info, grab_index, d
         print(f"[{account_info['name']}] ⚠️ Lỗi click: {e}")
 
 async def handle_drop_detection(message, panel):
-    """
-    Xử lý khi phát hiện drop trong panel
-    - Main account: Phân tích thông minh và click
-    - Các account khác: Click theo slot đã cấu hình
-    """
     accounts_in_panel = panel.get("accounts", {})
     if not accounts_in_panel:
         return
@@ -346,21 +309,17 @@ async def handle_drop_detection(message, panel):
     grab_indices = [0, 1, 2]
     grab_delays = [6.0, 6.2, 6.4]
     
-    # Kiểm tra xem có phải channel của Main không
     is_main_channel = False
     if main_account and str(message.channel.id) == panel.get("channel_id"):
-        # Kiểm tra xem main account có được assign vào panel này không
         for slot_key, token in accounts_in_panel.items():
             if token == main_account["token"]:
                 is_main_channel = True
                 break
     
-    # Nếu là channel có Main Account, Main sẽ phân tích và click trước
     if is_main_channel and main_account:
-        # Main account click thông minh
         async def main_click_task():
             main_bot = None
-            for bot in [listener_bot]:  # Tìm bot của main account
+            for bot in [listener_bot]:
                 if bot and bot.user:
                     break
             if main_bot:
@@ -368,21 +327,17 @@ async def handle_drop_detection(message, panel):
         
         tasks.append(main_click_task())
     
-    # Các account khác click theo cấu hình
     for i in range(3):
         slot_key = f"slot_{i + 1}"
         token = accounts_in_panel.get(slot_key)
         
         if token and token != (main_account["token"] if main_account else None):
-            # Tìm account info
             acc_info = next((acc for acc in GLOBAL_ACCOUNTS if acc["token"] == token), None)
             if acc_info:
                 grab_index = grab_indices[i]
                 delay = grab_delays[i]
                 
                 async def click_task(acc, msg, idx, d):
-                    # Tìm bot tương ứng với token này
-                    # (Trong thực tế, bạn cần track bot instances cho từng account)
                     await handle_button_click_follower(msg, None, acc, idx, d)
                 
                 tasks.append(click_task(acc_info, message, grab_index, delay))
@@ -392,7 +347,6 @@ async def handle_drop_detection(message, panel):
         print(f"✅ Hoàn thành xử lý drop cho panel '{panel.get('name')}'")
 
 async def run_listener_bot(session):
-    """Chạy bot chính để lắng nghe sự kiện drop"""
     global bot_ready, listener_bot
     
     if not GLOBAL_ACCOUNTS:
@@ -428,7 +382,6 @@ async def run_listener_bot(session):
         
         content = message.content.lower()
         
-        # Phát hiện drop
         if "dropping" in content or "thả" in content or "drop" in content:
             found_panel = None
             for p in panels:
@@ -529,6 +482,11 @@ HTML_TEMPLATE = """
         <div class="main-config">
             <h2><i class="fas fa-crown"></i> Cấu Hình Main Account <span class="info-badge">SMART AI</span></h2>
             <div class="main-config-grid">
+                <div class="input-group">
+                    <label><i class="fas fa-sort-numeric-up"></i> Giá trị tối thiểu (Min Value)</label>
+                    <input type="number" id="main-min-value" min="0" placeholder="VD: 3">
+                    <div class="emoji-help">Main chỉ nhặt button có giá trị ≥ con số này</div>
+                </div>
                 <div class="input-group">
                     <label><i class="fas fa-star"></i> Emoji ưu tiên (Priority Emojis)</label>
                     <div class="emoji-input">
@@ -814,7 +772,6 @@ def handle_panels():
     elif request.method == 'DELETE':
         data = request.get_json()
         panel_id = data.get('id')
-        # FIX: Thêm global để cập nhật biến toàn cục
         panels[:] = [p for p in panels if p.get('id') != panel_id]
         save_panels()
         return jsonify({"message": "Đã xóa panel"}), 200
@@ -850,8 +807,6 @@ def toggle_drop():
     state = "BẬT" if is_auto_drop_enabled else "TẮT"
     print(f"[CONTROL] Auto drop đã được {state}.")
     return jsonify({"message": f"Auto drop đã được {state}.", "is_enabled": is_auto_drop_enabled})
-
-# --- HÀM KHỞI CHẠY CHÍNH ---
 
 async def main():
     global last_drop_cycle_time
@@ -923,7 +878,7 @@ async def main():
                     for task in tasks:
                         try:
                             await task
-                            await asyncio.sleep(0.5)  # Giãn cách để tránh spam
+                            await asyncio.sleep(0.5)
                         except Exception as e:
                             print(f"[SEND TASK ERROR] Lỗi khi gửi 1 task 'sd': {e}")
                             
@@ -937,7 +892,7 @@ async def main():
                 print(f"{'='*60}\n")
                 
                 last_drop_cycle_time = time.time()
-                await asyncio.sleep(240)  # 4 phút = 240 giây
+                await asyncio.sleep(240)
     
             except Exception as e:
                 print(f"[DROP SENDER ERROR] Lỗi nghiêm trọng trong vòng lặp gửi 'sd': {e}")
@@ -948,7 +903,7 @@ async def main():
         remaining_time = 0
         if is_auto_drop_enabled:
             elapsed = time.time() - last_drop_cycle_time
-            remaining_time = max(0, 240 - elapsed)  # 240 giây = 4 phút
+            remaining_time = max(0, 240 - elapsed)
         else:
             remaining_time = 240
 
@@ -981,8 +936,3 @@ if __name__ == "__main__":
         os.system('pip install aiohttp')
         
     asyncio.run(main())
-                    <label><i class="fas fa-sort-numeric-up"></i> Giá trị tối thiểu (Min Value)</label>
-                    <input type="number" id="main-min-value" min="0" placeholder="VD: 3">
-                    <div class="emoji-help">Main chỉ nhặt button có giá trị ≥ con số này</div>
-                </div>
-                <div class="input-group">
