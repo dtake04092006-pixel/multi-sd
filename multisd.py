@@ -219,7 +219,7 @@ async def smart_button_click_main(message, bot, config):
     - Chọn button có giá trị cao nhất
     - Kiểm tra giá trị tối thiểu
     """
-    await asyncio.sleep(2)  # Delay 6 giây như yêu cầu
+    await asyncio.sleep(6)  # Delay 6 giây như yêu cầu
     
     try:
         print(f"[MAIN] 🧠 Đang phân tích button...")
@@ -402,9 +402,16 @@ async def run_listener_bot(session):
     
     listener_token = GLOBAL_ACCOUNTS[0]["token"]
     
+    # Tạo intents tối thiểu để tiết kiệm RAM
+    intents = discord.Intents.none()
+    intents.guilds = True
+    intents.guild_messages = True
+    intents.message_content = True
+    
     listener_bot = commands.Bot(
         command_prefix="!слушать",
         self_bot=True,
+        intents=intents,
         chunk_guilds_at_startup=False,
         member_cache_flags=discord.MemberCacheFlags.none()
     )
