@@ -194,7 +194,10 @@ def analyze_button_priority(button, config):
     return (priority_score, value if value else 0)
 
 async def smart_button_click_main(message, bot, config):
-    await asyncio.sleep(4.0) # Thời gian chờ ban đầu (2 giây)
+    # --- BẮT ĐẦU SỬA ĐỔI ---
+    # 1. Đặt thời gian chờ ban đầu (bạn muốn chờ 3s)
+    await asyncio.sleep(3.0) 
+    # --- KẾT THÚC SỬA ĐỔI ---
     
     try:
         print(f"[MAIN] 🧠 Bắt đầu phân tích button cho tin nhắn {message.id}")
@@ -202,28 +205,31 @@ async def smart_button_click_main(message, bot, config):
         fetched_message = None
         found_buttons = []
         
-        # --- BẮT ĐẦU SỬA ĐỔI: Bỏ vòng lặp 5 giây ---
-        # Chỉ thử fetch 1 lần duy nhất
-        try:
-            fetched_message = await message.channel.fetch_message(message.id)
-            
-            for action_row in fetched_message.components:
-                for component in action_row.children:
-                    if isinstance(component, discord.Button):
-                        found_buttons.append(component)
-            
-            if len(found_buttons) >= 3:
-                print(f"[MAIN] ✅ Đã tìm thấy {len(found_buttons)} buttons.")
-            else:
-                print(f"[MAIN] ⚠️ Chỉ tìm thấy {len(found_buttons)} buttons (vẫn tiếp tục).")
+        # --- BẮT ĐẦU SỬA ĐỔI: Phục hồi vòng lặp 5 lần ---
+        # 2. Vẫn "hỏi" 5 lần, mỗi lần cách 1 giây
+        for attempt in range(5):
+            try:
+                fetched_message = await message.channel.fetch_message(message.id)
                 
-        except Exception as e:
-            print(f"[MAIN] ❌ Lỗi khi fetch button 1 lần: {e}")
+                found_buttons = []
+                for action_row in fetched_message.components:
+                    for component in action_row.children:
+                        if isinstance(component, discord.Button):
+                            found_buttons.append(component)
+                
+                if len(found_buttons) >= 3:
+                    print(f"[MAIN] ✅ Đã tìm thấy {len(found_buttons)} buttons (Lần thử {attempt+1}/5).")
+                    break # Thoát vòng lặp khi tìm thấy
+            except:
+                pass # Bỏ qua lỗi và thử lại
+            await asyncio.sleep(1) # Chờ 1 giây trước khi thử lại
         # --- KẾT THÚC SỬA ĐỔI ---
         
         if not found_buttons:
-            print(f"[MAIN] ❌ Không tìm thấy button nào sau 1 lần thử.")
+            print(f"[MAIN] ❌ Không tìm thấy button nào sau 5 lần thử.")
             return None
+        
+        # ... (Phần còn lại của hàm giữ nguyên) ...
         
         button_analysis = []
         print("[MAIN] --- BẮT ĐẦU PHÂN TÍCH NỘI DUNG BUTTON ---")
@@ -283,7 +289,8 @@ async def smart_button_click_main(message, bot, config):
         return None
 
 async def handle_button_click_follower(message, bot, account_info, grab_index, delay):
-    await asyncio.sleep(delay) # Thời gian chờ ban đầu (ví dụ 6.0, 6.2 giây)
+    # 1. Thời gian chờ ban đầu (lấy từ grab_delays)
+    await asyncio.sleep(delay) 
     
     try:
         print(f"[{account_info['name']}] 🎯 Đang tìm button vị trí {grab_index+1} cho tin nhắn {message.id}...")
@@ -291,23 +298,24 @@ async def handle_button_click_follower(message, bot, account_info, grab_index, d
         fetched_message = None
         found_buttons = []
         
-        # --- BẮT ĐẦU SỬA ĐỔI: Bỏ vòng lặp 5 giây ---
-        # Chỉ thử fetch 1 lần duy nhất
-        try:
-            fetched_message = await message.channel.fetch_message(message.id)
-            
-            for action_row in fetched_message.components:
-                for component in action_row.children:
-                    if isinstance(component, discord.Button):
-                        found_buttons.append(component)
-            
-            if len(found_buttons) >= 3:
-                print(f"[{account_info['name']}] ✅ Đã tìm thấy {len(found_buttons)} buttons.")
-            else:
-                 print(f"[{account_info['name']}] ⚠️ Chỉ tìm thấy {len(found_buttons)} buttons.")
-                 
-        except Exception as e:
-            print(f"[{account_info['name']}] ❌ Lỗi khi fetch button 1 lần: {e}")
+        # --- BẮT ĐẦU SỬA ĐỔI: Phục hồi vòng lặp 5 lần ---
+        # 2. Vẫn "hỏi" 5 lần, mỗi lần cách 1 giây
+        for attempt in range(5):
+            try:
+                fetched_message = await message.channel.fetch_message(message.id)
+                
+                found_buttons = []
+                for action_row in fetched_message.components:
+                    for component in action_row.children:
+                        if isinstance(component, discord.Button):
+                            found_buttons.append(component)
+                
+                if len(found_buttons) >= 3:
+                    print(f"[{account_info['name']}] ✅ Đã tìm thấy {len(found_buttons)} buttons (Lần thử {attempt+1}/5).")
+                    break # Thoát vòng lặp khi tìm thấy
+            except:
+                pass # Bỏ qua lỗi và thử lại
+            await asyncio.sleep(1) # Chờ 1 giây trước khi thử lại
         # --- KẾT THÚC SỬA ĐỔI ---
         
         if len(found_buttons) > grab_index:
@@ -325,7 +333,7 @@ async def handle_button_click_follower(message, bot, account_info, grab_index, d
             
             print(f"[{account_info['name']}] 🖱️ ĐÃ GỬI XONG LỆNH CLICK!")
         else:
-            print(f"[{account_info['name']}] ❌ Không tìm thấy button vị trí {grab_index+1} (Tìm thấy {len(found_buttons)} buttons).")
+            print(f"[{account_info['name']}] ❌ Không tìm thấy button vị trí {grab_index+1} (Tìm thấy {len(found_buttons)} buttons sau 5 lần thử).")
             
     except Exception as e:
         print(f"[{account_info['name']}] ⚠️ Lỗi khi click: {e}")
