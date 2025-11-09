@@ -1,0 +1,10 @@
+# Môi trường ảo
+venv/
+*.venv/
+
+# File .env chứa token
+.env
+
+# Thư mục cache của Python
+__pycache__/
+*.pyc
