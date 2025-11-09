@@ -780,7 +780,7 @@ def index():
 
 @app.route("/api/panels", methods=['GET', 'POST', 'PUT', 'DELETE'])
 def handle_panels():
-    global panels  # ✅ QUAN TRỌNG: Thêm global ở đầu hàm
+    global panels  # ✅ QUAN TRỌNG: Đảm bảo dòng này ở ngay đầu hàm
     
     if request.method == 'GET':
         return jsonify(panels)
@@ -792,15 +792,15 @@ def handle_panels():
             return jsonify({"error": "Tên là bắt buộc"}), 400
         
         new_panel = {
-            "id": f"panel_{int(time.time())}_{random.randint(1000, 9999)}",  # ✅ Thêm random để tránh trùng
+            "id": f"panel_{int(time.time())}_{random.randint(1000, 9999)}",  # Thêm random để tránh trùng
             "name": name,
             "channel_id": "",
             "server_name": "",
             "accounts": {f"slot_{i}": "" for i in range(1, 4)}
         }
-        panels.append(new_panel)
+        panels.append(new_panel) # Thêm vào danh sách global
         save_panels()
-        print(f"[API] Đã tạo panel mới: {name}")  # ✅ Log để debug
+        print(f"[API] Đã tạo panel mới: {name}")
         return jsonify(new_panel), 201
 
     elif request.method == 'PUT':
@@ -826,18 +826,18 @@ def handle_panels():
                 panel_to_update['accounts'][slot] = token
 
         save_panels()
-        print(f"[API] Đã cập nhật panel: {panel_id}")  # ✅ Log để debug
+        print(f"[API] Đã cập nhật panel: {panel_id}")
         return jsonify(panel_to_update)
 
     elif request.method == 'DELETE':
         data = request.get_json()
         panel_id = data.get('id')
         
-        # ✅ FIX: Phải dùng global và không gán trực tiếp
+        # ✅ FIX: Đây là cách làm đúng để xóa item khỏi global list
         panels[:] = [p for p in panels if p.get('id') != panel_id]
         
         save_panels()
-        print(f"[API] Đã xóa panel: {panel_id}")  # ✅ Log để debug
+        print(f"[API] Đã xóa panel: {panel_id}")
         return jsonify({"message": "Đã xóa panel"}), 200
 
 @app.route("/api/main_config", methods=['GET', 'PUT'])
