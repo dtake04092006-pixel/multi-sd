@@ -402,28 +402,12 @@ async def run_listener_bot(session):
     
     listener_token = GLOBAL_ACCOUNTS[0]["token"]
     
-    # Tạo intents tối thiểu để tiết kiệm RAM
-    intents = discord.Intents.none()
-    intents.guilds = True
-    intents.guild_messages = True
-    intents.message_content = True
-    
-    try:
-        listener_bot = commands.Bot(
-            command_prefix="!слушать",
-            self_bot=True,
-            intents=intents,
-            chunk_guilds_at_startup=False,
-            member_cache_flags=discord.MemberCacheFlags.none()
-        )
-    except TypeError:
-        # Nếu self_bot không được hỗ trợ, thử không dùng nó
-        listener_bot = commands.Bot(
-            command_prefix="!слушать",
-            intents=intents,
-            chunk_guilds_at_startup=False,
-            member_cache_flags=discord.MemberCacheFlags.none()
-        )
+    listener_bot = commands.Bot(
+        command_prefix="!слушать",
+        self_bot=True,
+        chunk_guilds_at_startup=False,
+        member_cache_flags=discord.MemberCacheFlags.none()
+    )
 
     @listener_bot.event
     async def on_ready():
