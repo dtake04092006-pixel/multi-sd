@@ -706,14 +706,13 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
-    document.getElementById('farm-grid').addEventListener('click', async (e) => {
-        if (e.target.closest('.delete-panel-btn')) {
-            const panelEl = e.target.closest('.panel');
-            const panelId = panelEl.dataset.id;
-            if (confirm(`Bạn có chắc muốn xóa panel "${panelEl.querySelector('.panel-name').textContent}"?`)) {
-                await apiCall('DELETE', API_ENDPOINT, { id: panelId });
-                fetchAndRenderPanels();
-            }
+    // ĐOẠN CODE SỬA LẠI
+    document.getElementById('add-panel-btn').addEventListener('click', async () => {
+        const name = prompt('Nhập tên cho panel mới:', 'Farm Server Mới');
+        if (name) {
+            // SỬA LẠI: Thêm 'API_ENDPOINT' làm tham số thứ 2
+            await apiCall('POST', API_ENDPOINT, { name }); 
+            fetchAndRenderPanels();
         }
     });
     
