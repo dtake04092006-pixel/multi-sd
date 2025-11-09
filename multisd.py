@@ -222,10 +222,8 @@ def analyze_button_priority(button, config):
     return (priority_score, value if value else 0)
 
 async def smart_button_click_main(message, bot, config):
-    # --- BẮT ĐẦU SỬA ĐỔI ---
-    # 1. Đặt thời gian chờ ban đầu (bạn muốn chờ 3s)
+    # 1. Đặt thời gian chờ ban đầu
     await asyncio.sleep(3.0) 
-    # --- KẾT THÚC SỬA ĐỔI ---
     
     try:
         print(f"[MAIN] 🧠 Bắt đầu phân tích button cho tin nhắn {message.id}")
@@ -233,7 +231,6 @@ async def smart_button_click_main(message, bot, config):
         fetched_message = None
         found_buttons = []
         
-        # --- BẮT ĐẦU SỬA ĐỔI: Phục hồi vòng lặp 5 lần ---
         # 2. Vẫn "hỏi" 5 lần, mỗi lần cách 1 giây
         for attempt in range(5):
             try:
@@ -247,17 +244,14 @@ async def smart_button_click_main(message, bot, config):
                 
                 if len(found_buttons) >= 3:
                     print(f"[MAIN] ✅ Đã tìm thấy {len(found_buttons)} buttons (Lần thử {attempt+1}/5).")
-                    break # Thoát vòng lặp khi tìm thấy
+                    break 
             except:
-                pass # Bỏ qua lỗi và thử lại
-            await asyncio.sleep(1) # Chờ 1 giây trước khi thử lại
-        # --- KẾT THÚC SỬA ĐỔI ---
+                pass 
+            await asyncio.sleep(1)
         
         if not found_buttons:
             print(f"[MAIN] ❌ Không tìm thấy button nào sau 5 lần thử.")
             return None
-        
-        # ... (Phần còn lại của hàm giữ nguyên) ...
         
         button_analysis = []
         print("[MAIN] --- BẮT ĐẦU PHÂN TÍCH NỘI DUNG BUTTON ---")
@@ -278,6 +272,10 @@ async def smart_button_click_main(message, bot, config):
         
         min_value = config.get("min_value", 0)
         
+        # --- BẮT ĐẦU SỬA ĐỔI KỸ THUẬT CLICK ---
+        
+        best_button_info = None
+
         for btn_info in button_analysis:
             if "Join Sofi Cafe" in btn_info["label"]:
                 print(f"[MAIN] ⚠️ Bỏ qua button 'Join Sofi Cafe'")
@@ -285,29 +283,39 @@ async def smart_button_click_main(message, bot, config):
 
             if btn_info["priority"] < 10000:
                 print(f"[MAIN] ✅ ƯU TIÊN EMOJI! Chọn: {btn_info['label']} (Bỏ qua min_value)")
-                print(f"[MAIN] 🖱️ ĐANG GỬI LỆNH CLICK...")
-                await btn_info["button"].click()
-                print(f"[MAIN] 🖱️ ĐÃ GỬI XONG LỆNH CLICK!")
-                
-                detected_buttons_cache[str(message.channel.id)] = {
-                    "message_id": message.id,
-                    "best_index": btn_info["index"],
-                    "timestamp": time.time()
-                }
-                return btn_info["index"] 
+                best_button_info = btn_info
+                break
 
             if btn_info["value"] >= min_value:
                 print(f"[MAIN] ✅ Chọn button theo giá trị: {btn_info['label']} (Value: {btn_info['value']})")
-                print(f"[MAIN] 🖱️ ĐANG GỬI LỆNH CLICK...")
-                await btn_info["button"].click()
-                print(f"[MAIN] 🖱️ ĐÃ GỬI XONG LỆNH CLICK!")
-                
-                detected_buttons_cache[str(message.channel.id)] = {
-                    "message_id": message.id,
-                    "best_index": btn_info["index"],
-                    "timestamp": time.time()
-                }
-                return btn_info["index"] 
+                best_button_info = btn_info
+                break
+
+        # Nếu tìm thấy nút tốt nhất, tiến hành click bằng HTTP
+        if best_button_info:
+            main_token = bot.token
+            channel_id = message.channel.id
+            message_id = message.id
+            guild_id = message.guild.id if message.guild else None
+            custom_id = best_button_info["button"].custom_id # Lấy custom_id
+            
+            print(f"[MAIN] 🖱️ ĐANG GỬI LỆNH CLICK (HTTP) CHO NÚT: {best_button_info['label']}")
+            
+            async with aiohttp.ClientSession() as session:
+                await click_button_http_async(session, main_token, channel_id, message_id, guild_id, custom_id)
+
+            # Bỏ lệnh click cũ (Không ổn định)
+            # await best_button_info["button"].click()
+            
+            print(f"[MAIN] 🖱️ ĐÃ GỬI XONG LỆNH CLICK (HTTP)!")
+            
+            detected_buttons_cache[str(message.channel.id)] = {
+                "message_id": message.id,
+                "best_index": best_button_info["index"],
+                "timestamp": time.time()
+            }
+            return best_button_info["index"]
+        # --- KẾT THÚC SỬA ĐỔI ---
 
         print(f"[MAIN] ⚠️ Không có button nào thỏa mãn điều kiện (min_value: {min_value} và đã lọc 'Join Sofi Cafe')")
         return None
