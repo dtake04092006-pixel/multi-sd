@@ -194,41 +194,39 @@ def analyze_button_priority(button, config):
     return (priority_score, value if value else 0)
 
 async def smart_button_click_main(message, bot, config):
-    await asyncio.sleep(2.0) # Bạn có thể chỉnh lại sleep time ở đây
+    await asyncio.sleep(3.0) # Thời gian chờ ban đầu (2 giây)
     
     try:
-        # --- LOG MỚI ---
         print(f"[MAIN] 🧠 Bắt đầu phân tích button cho tin nhắn {message.id}")
-        # --- KẾT THÚC LOG MỚI ---
         
         fetched_message = None
         found_buttons = []
         
-        for attempt in range(5):
-            try:
-                fetched_message = await message.channel.fetch_message(message.id)
+        # --- BẮT ĐẦU SỬA ĐỔI: Bỏ vòng lặp 5 giây ---
+        # Chỉ thử fetch 1 lần duy nhất
+        try:
+            fetched_message = await message.channel.fetch_message(message.id)
+            
+            for action_row in fetched_message.components:
+                for component in action_row.children:
+                    if isinstance(component, discord.Button):
+                        found_buttons.append(component)
+            
+            if len(found_buttons) >= 3:
+                print(f"[MAIN] ✅ Đã tìm thấy {len(found_buttons)} buttons.")
+            else:
+                print(f"[MAIN] ⚠️ Chỉ tìm thấy {len(found_buttons)} buttons (vẫn tiếp tục).")
                 
-                found_buttons = []
-                for action_row in fetched_message.components:
-                    for component in action_row.children:
-                        if isinstance(component, discord.Button):
-                            found_buttons.append(component)
-                
-                if len(found_buttons) >= 3:
-                    # --- LOG MỚI ---
-                    print(f"[MAIN] ✅ Đã tìm thấy {len(found_buttons)} buttons.")
-                    # --- KẾT THÚC LOG MỚI ---
-                    break
-            except:
-                pass
-            await asyncio.sleep(1)
+        except Exception as e:
+            print(f"[MAIN] ❌ Lỗi khi fetch button 1 lần: {e}")
+        # --- KẾT THÚC SỬA ĐỔI ---
         
         if not found_buttons:
-            print(f"[MAIN] ❌ Không tìm thấy button nào sau 5 lần thử.")
+            print(f"[MAIN] ❌ Không tìm thấy button nào sau 1 lần thử.")
             return None
         
         button_analysis = []
-        print("[MAIN] --- BẮT ĐẦU PHÂN TÍCH NỘI DUNG BUTTON ---") # Log chi tiết hơn
+        print("[MAIN] --- BẮT ĐẦU PHÂN TÍCH NỘI DUNG BUTTON ---")
         for idx, btn in enumerate(found_buttons):
             priority, value = analyze_button_priority(btn, config)
             button_analysis.append({
@@ -239,24 +237,18 @@ async def smart_button_click_main(message, bot, config):
                 "label": btn.label or "No label",
                 "emoji": str(btn.emoji) if btn.emoji else ""
             })
-            # --- LOG CHI TIẾT HƠN ---
             print(f"[MAIN] 📊 Button {idx+1}: Label='{btn.label}' | Emoji='{btn.emoji}' | Value={value} | Priority={priority}")
-            # --- KẾT THÚC LOG ---
-        print("[MAIN] --- KẾT THÚC PHÂN TÍCH ---") # Log chi tiết hơn
+        print("[MAIN] --- KẾT THÚC PHÂN TÍCH ---")
         
         button_analysis.sort(key=lambda x: x["priority"])
         
         min_value = config.get("min_value", 0)
         
-        # --- BẮT ĐẦU LOGIC MỚI ---
         for btn_info in button_analysis:
-            # 1. KIỂM TRA AN TOÀN (Goal 2: Không click "Join Sofi Cafe")
             if "Join Sofi Cafe" in btn_info["label"]:
                 print(f"[MAIN] ⚠️ Bỏ qua button 'Join Sofi Cafe'")
-                continue # Chuyển sang button tiếp theo
+                continue 
 
-            # 2. KIỂM TRA EMOJI ƯU TIÊN (Goal 1: Thấy là nhặt)
-            # (priority < 10000 nghĩa là đã tìm thấy emoji ưu tiên)
             if btn_info["priority"] < 10000:
                 print(f"[MAIN] ✅ ƯU TIÊN EMOJI! Chọn: {btn_info['label']} (Bỏ qua min_value)")
                 print(f"[MAIN] 🖱️ ĐANG GỬI LỆNH CLICK...")
@@ -268,10 +260,8 @@ async def smart_button_click_main(message, bot, config):
                     "best_index": btn_info["index"],
                     "timestamp": time.time()
                 }
-                return btn_info["index"] # Click và thoát
+                return btn_info["index"] 
 
-            # 3. KIỂM TRA GIÁ TRỊ TỐI THIỂU (Logic cũ)
-            # Chỉ chạy nếu không có emoji ưu tiên
             if btn_info["value"] >= min_value:
                 print(f"[MAIN] ✅ Chọn button theo giá trị: {btn_info['label']} (Value: {btn_info['value']})")
                 print(f"[MAIN] 🖱️ ĐANG GỬI LỆNH CLICK...")
@@ -283,19 +273,17 @@ async def smart_button_click_main(message, bot, config):
                     "best_index": btn_info["index"],
                     "timestamp": time.time()
                 }
-                return btn_info["index"] # Click và thoát
+                return btn_info["index"] 
 
-        # Nếu vòng lặp kết thúc mà không click gì
         print(f"[MAIN] ⚠️ Không có button nào thỏa mãn điều kiện (min_value: {min_value} và đã lọc 'Join Sofi Cafe')")
         return None
-        # --- KẾT THÚC LOGIC MỚI ---
             
     except Exception as e:
-        print(f"[MAIN] ❌ Lỗi khi phân tích hoặc click button: {e}") # Log chi tiết hơn
+        print(f"[MAIN] ❌ Lỗi khi phân tích hoặc click button: {e}")
         return None
 
 async def handle_button_click_follower(message, bot, account_info, grab_index, delay):
-    await asyncio.sleep(delay)
+    await asyncio.sleep(delay) # Thời gian chờ ban đầu (ví dụ 6.0, 6.2 giây)
     
     try:
         print(f"[{account_info['name']}] 🎯 Đang tìm button vị trí {grab_index+1} cho tin nhắn {message.id}...")
@@ -303,48 +291,44 @@ async def handle_button_click_follower(message, bot, account_info, grab_index, d
         fetched_message = None
         found_buttons = []
         
-        for attempt in range(5):
-            try:
-                fetched_message = await message.channel.fetch_message(message.id)
-                
-                found_buttons = []
-                for action_row in fetched_message.components:
-                    for component in action_row.children:
-                        if isinstance(component, discord.Button):
-                            found_buttons.append(component)
-                
-                if len(found_buttons) >= 3:
-                    # --- LOG MỚI ---
-                    print(f"[{account_info['name']}] ✅ Đã tìm thấy {len(found_buttons)} buttons.")
-                    # --- KẾT THÚC LOG MỚI ---
-                    break
-            except:
-                pass
-            await asyncio.sleep(1)
+        # --- BẮT ĐẦU SỬA ĐỔI: Bỏ vòng lặp 5 giây ---
+        # Chỉ thử fetch 1 lần duy nhất
+        try:
+            fetched_message = await message.channel.fetch_message(message.id)
+            
+            for action_row in fetched_message.components:
+                for component in action_row.children:
+                    if isinstance(component, discord.Button):
+                        found_buttons.append(component)
+            
+            if len(found_buttons) >= 3:
+                print(f"[{account_info['name']}] ✅ Đã tìm thấy {len(found_buttons)} buttons.")
+            else:
+                 print(f"[{account_info['name']}] ⚠️ Chỉ tìm thấy {len(found_buttons)} buttons.")
+                 
+        except Exception as e:
+            print(f"[{account_info['name']}] ❌ Lỗi khi fetch button 1 lần: {e}")
+        # --- KẾT THÚC SỬA ĐỔI ---
         
         if len(found_buttons) > grab_index:
             target_button = found_buttons[grab_index]
             
-            # --- LOGIC MỚI: KIỂM TRA AN TOÀN ---
             button_label = target_button.label or ""
             if "Join Sofi Cafe" in button_label:
                 print(f"[{account_info['name']}] ⚠️ Bỏ qua button 'Join Sofi Cafe' (vị trí {grab_index+1})")
                 return
-            # --- KẾT THÚC LOGIC MỚI ---
 
-            # --- LOG MỚI ---
             print(f"[{account_info['name']}] ℹ️ Button mục tiêu (vị trí {grab_index+1}): Label='{target_button.label}', Emoji='{target_button.emoji}'")
             print(f"[{account_info['name']}] 🖱️ ĐANG GỬI LỆNH CLICK...")
-            # --- KẾT THÚC LOG MỚI ---
             
             await target_button.click()
             
-            print(f"[{account_info['name']}] 🖱️ ĐÃ GỬI XONG LỆNH CLICK!") # Log mới
+            print(f"[{account_info['name']}] 🖱️ ĐÃ GỬI XONG LỆNH CLICK!")
         else:
             print(f"[{account_info['name']}] ❌ Không tìm thấy button vị trí {grab_index+1} (Tìm thấy {len(found_buttons)} buttons).")
             
     except Exception as e:
-        print(f"[{account_info['name']}] ⚠️ Lỗi khi click: {e}") # Log chi tiết hơn
+        print(f"[{account_info['name']}] ⚠️ Lỗi khi click: {e}")
         
 async def handle_drop_detection(message, panel):
     accounts_in_panel = panel.get("accounts", {})
