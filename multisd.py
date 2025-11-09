@@ -194,7 +194,7 @@ def analyze_button_priority(button, config):
     return (priority_score, value if value else 0)
 
 async def smart_button_click_main(message, bot, config):
-    await asyncio.sleep(6)
+    await asyncio.sleep(3)
     
     try:
         print(f"[MAIN] 🧠 Đang phân tích button...")
@@ -302,35 +302,39 @@ async def handle_button_click_follower(message, bot, account_info, grab_index, d
 
 async def handle_drop_detection(message, panel):
     accounts_in_panel = panel.get("accounts", {})
-    if not accounts_in_panel:
-        return
     
     tasks = []
     grab_indices = [0, 1, 2]
     grab_delays = [6.0, 6.2, 6.4]
     
-    is_main_channel = False
-    if main_account and str(message.channel.id) == panel.get("channel_id"):
-        for slot_key, token in accounts_in_panel.items():
-            if token == main_account["token"]:
-                is_main_channel = True
-                break
-    
-    if is_main_channel and main_account:
+    # --- ĐÃ SỬA ĐỔI ---
+    # Logic kiểm tra "is_main_channel" đã bị xóa.
+    # Giờ đây, nếu main_account tồn tại, nó sẽ LUÔN LUÔN thử smart click.
+    if main_account:
         async def main_click_task():
             main_bot = None
+            
+            # SỬA LỖI: Gán 'bot' cho 'main_bot' khi tìm thấy
             for bot in [listener_bot]:
                 if bot and bot.user:
+                    main_bot = bot # <--- DÒNG NÀY ĐÃ ĐƯỢC THÊM VÀO
                     break
+                    
             if main_bot:
+                # smart_button_click_main sẽ được gọi cho BẤT KỲ panel nào
                 await smart_button_click_main(message, main_bot, main_panel_config)
+            else:
+                print(f"[MAIN] ⚠️ Không tìm thấy đối tượng bot lắng nghe để click.")
         
         tasks.append(main_click_task())
-    
+    # --- KẾT THÚC SỬA ĐỔI ---
+
+    # Logic cho các tài khoản phụ (follower) vẫn như cũ
     for i in range(3):
         slot_key = f"slot_{i + 1}"
         token = accounts_in_panel.get(slot_key)
         
+        # Điều kiện này vẫn quan trọng để ngăn Main Account click 2 lần
         if token and token != (main_account["token"] if main_account else None):
             acc_info = next((acc for acc in GLOBAL_ACCOUNTS if acc["token"] == token), None)
             if acc_info:
@@ -344,8 +348,8 @@ async def handle_drop_detection(message, panel):
     
     if tasks:
         await asyncio.gather(*tasks)
-        print(f"✅ Hoàn thành xử lý drop cho panel '{panel.get('name')}'")
-
+        print(f"✅ Hoàn thành xử lý drop cho panel '{panel.get('name')}' (Main đã tự động tham gia)")
+        
 async def run_listener_bot(session):
     global bot_ready, listener_bot
     
