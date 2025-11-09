@@ -194,7 +194,7 @@ def analyze_button_priority(button, config):
     return (priority_score, value if value else 0)
 
 async def smart_button_click_main(message, bot, config):
-    await asyncio.sleep(3.0) # Thời gian chờ ban đầu (2 giây)
+    await asyncio.sleep(4.0) # Thời gian chờ ban đầu (2 giây)
     
     try:
         print(f"[MAIN] 🧠 Bắt đầu phân tích button cho tin nhắn {message.id}")
