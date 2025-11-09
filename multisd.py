@@ -402,11 +402,10 @@ async def run_listener_bot(session):
     
     listener_token = GLOBAL_ACCOUNTS[0]["token"]
     
+    # SỬA: Không cần intents cho self-bot
     listener_bot = commands.Bot(
         command_prefix="!слушать",
-        self_bot=True,
-        chunk_guilds_at_startup=False,
-        member_cache_flags=discord.MemberCacheFlags.none()
+        self_bot=True
     )
 
     @listener_bot.event
@@ -447,9 +446,12 @@ async def run_listener_bot(session):
         await listener_bot.start(listener_token)
     except discord.errors.LoginFailure:
         print(f"❌ LỖI ĐĂNG NHẬP NGHIÊM TRỌNG với token của bot lắng nghe.")
+        print("💡 Kiểm tra lại TOKEN_MAIN hoặc TOKENS trong file .env")
         bot_ready = True
     except Exception as e:
         print(f"❌ Lỗi không xác định với bot lắng nghe: {e}")
+        import traceback
+        traceback.print_exc()
         bot_ready = True
 
 # --- GIAO DIỆN WEB & API FLASK ---
@@ -706,13 +708,14 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
-    // ĐOẠN CODE SỬA LẠI
-    document.getElementById('add-panel-btn').addEventListener('click', async () => {
-        const name = prompt('Nhập tên cho panel mới:', 'Farm Server Mới');
-        if (name) {
-            // SỬA LẠI: Thêm 'API_ENDPOINT' làm tham số thứ 2
-            await apiCall('POST', API_ENDPOINT, { name }); 
-            fetchAndRenderPanels();
+    document.getElementById('farm-grid').addEventListener('click', async (e) => {
+        if (e.target.closest('.delete-panel-btn')) {
+            const panelEl = e.target.closest('.panel');
+            const panelId = panelEl.dataset.id;
+            if (confirm(`Bạn có chắc muốn xóa panel "${panelEl.querySelector('.panel-name').textContent}"?`)) {
+                await apiCall('DELETE', API_ENDPOINT, { id: panelId });
+                fetchAndRenderPanels();
+            }
         }
     });
     
