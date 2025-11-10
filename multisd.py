@@ -293,7 +293,7 @@ async def smart_button_click_main(message, bot, config):
 
         # Nếu tìm thấy nút tốt nhất, tiến hành click bằng HTTP
         if best_button_info:
-            main_token = bot.token
+            main_token = main_account['token'] if main_account else GLOBAL_ACCOUNTS[0]['token']
             channel_id = message.channel.id
             message_id = message.id
             guild_id = message.guild.id if message.guild else None
