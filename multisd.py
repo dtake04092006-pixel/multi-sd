@@ -281,7 +281,7 @@ async def smart_button_click_main(message, bot, config):
                 print(f"[MAIN] ⚠️ Bỏ qua button 'Join Sofi Cafe'")
                 continue 
 
-            if btn_info["priority"] < 10000:
+            if btn_info["priority"] < 9000:
                 print(f"[MAIN] ✅ ƯU TIÊN EMOJI! Chọn: {btn_info['label']} (Bỏ qua min_value)")
                 best_button_info = btn_info
                 break
