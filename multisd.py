@@ -992,7 +992,7 @@ async def main():
                 print(f"{'='*60}\n")
                 
                 last_drop_cycle_time = time.time()
-                await asyncio.sleep(240)
+                await asyncio.sleep(245)
     
             except Exception as e:
                 print(f"[DROP SENDER ERROR] Lỗi nghiêm trọng trong vòng lặp gửi 'sd': {e}")
