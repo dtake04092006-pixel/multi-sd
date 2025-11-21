@@ -1,5 +1,5 @@
-# TÊN FILE: multi_sofi_advanced.py
-# PHIÊN BẢN: Multi-Farm Sofi Control v4.0 (Smart Button Detection) - FIXED
+# TÊN FILE: multisd-n.py
+# PHIÊN BẢN: Multi-Farm Sofi Control v4.1 (2 Slots - 4m8s Delay)
 import discord
 from discord.ext import commands
 import asyncio
@@ -85,14 +85,14 @@ async def click_button_http_async(session, token, channel_id, message_id, guild_
     headers["Authorization"] = token
     
     payload = {
-        "type": 3, # Loại tương tác: bấm component
+        "type": 3, 
         "application_id": str(SOFI_ID),
         "guild_id": str(guild_id) if guild_id else None,
         "channel_id": str(channel_id),
         "message_id": str(message_id),
-        "session_id": "0", # Self-bot có thể dùng session_id đơn giản
+        "session_id": "0", 
         "data": {
-            "component_type": 2, # Loại component: button
+            "component_type": 2, 
             "custom_id": custom_id
         }
     }
@@ -100,7 +100,7 @@ async def click_button_http_async(session, token, channel_id, message_id, guild_
     url = "https://discord.com/api/v9/interactions"
     try:
         async with session.post(url, headers=headers, json=payload, timeout=10) as res:
-            if res.status == 204: # 204 No Content là thành công
+            if res.status == 204: 
                 print(f"[HTTP CLICK] ✅ Token {token[:5]}... đã click thành công (HTTP 204)")
             else:
                 print(f"[HTTP CLICK ERROR] ❌ Token {token[:5]}... Lỗi khi click: {res.status} - {await res.text()}")
@@ -222,7 +222,6 @@ def analyze_button_priority(button, config):
     return (priority_score, value if value else 0)
 
 async def smart_button_click_main(message, bot, config):
-    # 1. Đặt thời gian chờ ban đầu
     await asyncio.sleep(1.5) 
     
     try:
@@ -231,7 +230,6 @@ async def smart_button_click_main(message, bot, config):
         fetched_message = None
         found_buttons = []
         
-        # 2. Vẫn "hỏi" 5 lần, mỗi lần cách 1 giây
         for attempt in range(5):
             try:
                 fetched_message = await message.channel.fetch_message(message.id)
@@ -272,8 +270,6 @@ async def smart_button_click_main(message, bot, config):
         
         min_value = config.get("min_value", 0)
         
-        # --- BẮT ĐẦU SỬA ĐỔI KỸ THUẬT CLICK ---
-        
         best_button_info = None
 
         for btn_info in button_analysis:
@@ -281,6 +277,7 @@ async def smart_button_click_main(message, bot, config):
                 print(f"[MAIN] ⚠️ Bỏ qua button 'Join Sofi Cafe'")
                 continue 
 
+            # Đã fix lỗi priority (dùng 9000)
             if btn_info["priority"] < 9000:
                 print(f"[MAIN] ✅ ƯU TIÊN EMOJI! Chọn: {btn_info['label']} (Bỏ qua min_value)")
                 best_button_info = btn_info
@@ -291,21 +288,18 @@ async def smart_button_click_main(message, bot, config):
                 best_button_info = btn_info
                 break
 
-        # Nếu tìm thấy nút tốt nhất, tiến hành click bằng HTTP
         if best_button_info:
+            # Đã fix lỗi lấy token main
             main_token = main_account['token'] if main_account else GLOBAL_ACCOUNTS[0]['token']
             channel_id = message.channel.id
             message_id = message.id
             guild_id = message.guild.id if message.guild else None
-            custom_id = best_button_info["button"].custom_id # Lấy custom_id
+            custom_id = best_button_info["button"].custom_id 
             
             print(f"[MAIN] 🖱️ ĐANG GỬI LỆNH CLICK (HTTP) CHO NÚT: {best_button_info['label']}")
             
             async with aiohttp.ClientSession() as session:
                 await click_button_http_async(session, main_token, channel_id, message_id, guild_id, custom_id)
-
-            # Bỏ lệnh click cũ (Không ổn định)
-            # await best_button_info["button"].click()
             
             print(f"[MAIN] 🖱️ ĐÃ GỬI XONG LỆNH CLICK (HTTP)!")
             
@@ -315,7 +309,6 @@ async def smart_button_click_main(message, bot, config):
                 "timestamp": time.time()
             }
             return best_button_info["index"]
-        # --- KẾT THÚC SỬA ĐỔI ---
 
         print(f"[MAIN] ⚠️ Không có button nào thỏa mãn điều kiện (min_value: {min_value} và đã lọc 'Join Sofi Cafe')")
         return None
@@ -325,7 +318,6 @@ async def smart_button_click_main(message, bot, config):
         return None
 
 async def handle_button_click_follower(message, bot, account_info, grab_index, delay):
-    # 1. Thời gian chờ ban đầu (lấy từ grab_delays)
     await asyncio.sleep(delay) 
     
     try:
@@ -334,8 +326,6 @@ async def handle_button_click_follower(message, bot, account_info, grab_index, d
         fetched_message = None
         found_buttons = []
         
-        # 2. Vẫn "hỏi" 5 lần, mỗi lần cách 1 giây
-        #    Việc này vẫn do Acc Main làm, vì chỉ nó mới "thấy" message object
         for attempt in range(5):
             try:
                 fetched_message = await message.channel.fetch_message(message.id)
@@ -348,10 +338,10 @@ async def handle_button_click_follower(message, bot, account_info, grab_index, d
                 
                 if len(found_buttons) >= 3:
                     print(f"[{account_info['name']}] ✅ (Main) Đã tìm thấy {len(found_buttons)} buttons (Lần thử {attempt+1}/5).")
-                    break # Thoát vòng lặp khi tìm thấy
+                    break 
             except:
-                pass # Bỏ qua lỗi và thử lại
-            await asyncio.sleep(1) # Chờ 1 giây trước khi thử lại
+                pass 
+            await asyncio.sleep(1) 
         
         if len(found_buttons) > grab_index:
             target_button = found_buttons[grab_index]
@@ -363,24 +353,17 @@ async def handle_button_click_follower(message, bot, account_info, grab_index, d
 
             print(f"[{account_info['name']}] ℹ️ (Main) Button mục tiêu: Label='{target_button.label}', Emoji='{target_button.emoji}'")
             
-            # --- BẮT ĐẦU SỬA ĐỔI QUAN TRỌNG ---
-            # Lấy thông tin cần thiết cho Acc Phụ
             follower_token = account_info['token']
             channel_id = message.channel.id
             message_id = message.id
             guild_id = message.guild.id if message.guild else None
-            custom_id = target_button.custom_id # Đây là chìa khóa
+            custom_id = target_button.custom_id 
             
             print(f"[{account_info['name']}] 🖱️ ĐANG CHUYỂN GIAO LỆNH CLICK CHO ACC PHỤ (Token: {follower_token[:5]}...)")
             
-            # Acc Phụ tự click qua HTTP
             async with aiohttp.ClientSession() as session:
                 await click_button_http_async(session, follower_token, channel_id, message_id, guild_id, custom_id)
             
-            # Bỏ lệnh click của Acc Main (NGUYÊN NHÂN GÂY LỖI)
-            # await target_button.click() 
-            # --- KẾT THÚC SỬA ĐỔI ---
-
             print(f"[{account_info['name']}] 🖱️ ĐÃ GỬI XONG LỆNH CLICK TỪ ACC PHỤ!")
         else:
             print(f"[{account_info['name']}] ❌ (Main) Không tìm thấy button vị trí {grab_index+1} (Tìm thấy {len(found_buttons)} buttons sau 5 lần thử).")
@@ -395,34 +378,24 @@ async def handle_drop_detection(message, panel):
     grab_indices = [0, 1, 2]
     grab_delays = [6.0, 6.2, 6.4]
     
-    # --- ĐÃ SỬA ĐỔI ---
-    # Logic kiểm tra "is_main_channel" đã bị xóa.
-    # Giờ đây, nếu main_account tồn tại, nó sẽ LUÔN LUÔN thử smart click.
     if main_account:
         async def main_click_task():
             main_bot = None
-            
-            # SỬA LỖI: Gán 'bot' cho 'main_bot' khi tìm thấy
             for bot in [listener_bot]:
                 if bot and bot.user:
-                    main_bot = bot # <--- DÒNG NÀY ĐÃ ĐƯỢC THÊM VÀO
+                    main_bot = bot 
                     break
-                    
             if main_bot:
-                # smart_button_click_main sẽ được gọi cho BẤT KỲ panel nào
                 await smart_button_click_main(message, main_bot, main_panel_config)
             else:
                 print(f"[MAIN] ⚠️ Không tìm thấy đối tượng bot lắng nghe để click.")
-        
         tasks.append(main_click_task())
-    # --- KẾT THÚC SỬA ĐỔI ---
 
-    # Logic cho các tài khoản phụ (follower) vẫn như cũ
-    for i in range(3):
+    # --- THAY ĐỔI: CHỈ LẶP 2 LẦN (2 SLOT) ---
+    for i in range(2):
         slot_key = f"slot_{i + 1}"
         token = accounts_in_panel.get(slot_key)
         
-        # Điều kiện này vẫn quan trọng để ngăn Main Account click 2 lần
         if token and token != (main_account["token"] if main_account else None):
             acc_info = next((acc for acc in GLOBAL_ACCOUNTS if acc["token"] == token), None)
             if acc_info:
@@ -436,7 +409,7 @@ async def handle_drop_detection(message, panel):
     
     if tasks:
         await asyncio.gather(*tasks)
-        print(f"✅ Hoàn thành xử lý drop cho panel '{panel.get('name')}' (Main đã tự động tham gia)")
+        print(f"✅ Hoàn thành xử lý drop cho panel '{panel.get('name')}'")
         
 async def run_listener_bot(session):
     global bot_ready, listener_bot
@@ -475,9 +448,7 @@ async def run_listener_bot(session):
         content = message.content.lower()
         
         if "dropping" in content or "thả" in content or "drop" in content:
-            # --- LOG MỚI ---
             print(f"[DEBUG] -> Phát hiện từ khóa drop trong kênh {message.channel.id}: {content[:50]}")
-            # --- KẾT THÚC LOG MỚI ---
             
             found_panel = None
             for p in panels:
@@ -491,10 +462,8 @@ async def run_listener_bot(session):
                 print(f"📝 Nội dung: {message.content[:100]}")
                 print(f"{'='*60}")
                 asyncio.create_task(handle_drop_detection(message, found_panel))
-            # --- LOG MỚI ---
             else:
                 print(f"[DEBUG] -> Đã thấy drop, nhưng kênh {message.channel.id} không nằm trong panel nào.")
-            # --- KẾT THÚC LOG MỚI ---
 
     try:
         await listener_bot.start(listener_token)
@@ -515,7 +484,7 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multi-Sofi Smart Control</title>
+    <title>Multi-Sofi Smart Control (2 Slots)</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root { --primary-bg: #111; --secondary-bg: #1d1d1d; --panel-bg: #2a2a2a; --border-color: #444; --text-primary: #f0f0f0; --text-secondary: #aaa; --accent-color: #00aaff; --danger-color: #ff4444; --success-color: #44ff44; }
@@ -568,8 +537,8 @@ HTML_TEMPLATE = """
 <body>
     <div class="container">
         <div class="header">
-            <h1><i class="fas fa-brain"></i> Multi-Sofi Smart Control v4.0</h1>
-            <p class="subtitle">🧠 Hệ thống phân tích button thông minh với Main Account AI</p>
+            <h1><i class="fas fa-brain"></i> Multi-Sofi Smart Control v4.1</h1>
+            <p class="subtitle">🧠 Hệ thống phân tích button thông minh (2 Slots / Panel)</p>
         </div>
 
         <div class="status-bar">
@@ -670,7 +639,8 @@ document.addEventListener('DOMContentLoaded', function () {
     
             let accountSlotsHTML = '';
             
-            for (let i = 1; i <= 3; i++) {
+            // --- THAY ĐỔI: CHỈ RENDER 2 SLOT TRÊN GIAO DIỆN ---
+            for (let i = 1; i <= 2; i++) {
                 const slotKey = `slot_${i}`;
                 const currentTokenForSlot = panel.accounts[slotKey] || '';
                 
@@ -707,7 +677,8 @@ document.addEventListener('DOMContentLoaded', function () {
             `;
             grid.appendChild(panelEl);
             
-            for (let i = 1; i <= 3; i++) {
+            // --- THAY ĐỔI: CHỈ SET VALUE CHO 2 SLOT ---
+            for (let i = 1; i <= 2; i++) {
                 const slotKey = `slot_${i}`;
                 const selectedToken = panel.accounts[slotKey] || '';
                 panelEl.querySelector(`select[data-slot="${slotKey}"]`).value = selectedToken;
@@ -841,7 +812,8 @@ def handle_panels():
             "name": name,
             "channel_id": "",
             "server_name": "",
-            "accounts": {f"slot_{i}": "" for i in range(1, 4)}
+            # --- THAY ĐỔI: CHỈ TẠO 2 SLOT CHO PANEL MỚI ---
+            "accounts": {f"slot_{i}": "" for i in range(1, 3)}
         }
         panels.append(new_panel)
         save_panels()
@@ -916,7 +888,7 @@ async def main():
         return
 
     print("\n" + "="*60)
-    print("🚀 KHỞI ĐỘNG MULTI-SOFI SMART CONTROL v4.0")
+    print("🚀 KHỞI ĐỘNG MULTI-SOFI SMART CONTROL v4.1 (2 Slots Mode)")
     print("="*60)
     
     if main_account:
@@ -985,14 +957,17 @@ async def main():
                     print(f"✅ Đã gửi xong {active_sends} lệnh cho {slot_key}.")
                 else:
                     print(f"⚠️ Không có tài khoản nào được cấu hình cho {slot_key}.")
+                
+                # --- THAY ĐỔI: CHUYỂN SLOT MOD 2 (VÌ CHỈ CÓ 2 SLOT) ---
+                current_drop_slot = (current_drop_slot + 1) % 2
     
-                current_drop_slot = (current_drop_slot + 1) % 3
-    
-                print(f"⏰ Đã xong lượt. Chờ 240 giây (4 phút) cho lượt kế tiếp (Slot {current_drop_slot + 1})...")
+                print(f"⏰ Đã xong lượt. Chờ 248 giây (4 phút 8s) cho lượt kế tiếp (Slot {current_drop_slot + 1})...")
                 print(f"{'='*60}\n")
                 
                 last_drop_cycle_time = time.time()
-                await asyncio.sleep(245)
+                
+                # --- THAY ĐỔI: THỜI GIAN CHỜ 248 GIÂY ---
+                await asyncio.sleep(248)
     
             except Exception as e:
                 print(f"[DROP SENDER ERROR] Lỗi nghiêm trọng trong vòng lặp gửi 'sd': {e}")
@@ -1003,9 +978,10 @@ async def main():
         remaining_time = 0
         if is_auto_drop_enabled:
             elapsed = time.time() - last_drop_cycle_time
-            remaining_time = max(0, 240 - elapsed)
+            # --- THAY ĐỔI: HIỂN THỊ ĐẾM NGƯỢC CHO 248s ---
+            remaining_time = max(0, 248 - elapsed)
         else:
-            remaining_time = 240
+            remaining_time = 248
 
         return jsonify({
             "bot_ready": bot_ready,
