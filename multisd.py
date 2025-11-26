@@ -194,9 +194,28 @@ def get_server_name_from_channel(channel_id):
 def extract_number_from_text(text):
     if not text:
         return None
-    numbers = re.findall(r'\d+', text)
-    if numbers:
-        return int(numbers[0])
+    
+    # Chuyển thành chữ thường để xử lý cả 'k' và 'K'
+    text_clean = text.lower().replace(',', '') # Xóa dấu phẩy nếu có (vd: 1,000)
+    
+    multiplier = 1
+    if 'k' in text_clean:
+        multiplier = 1000
+        text_clean = text_clean.replace('k', '')
+    elif 'm' in text_clean: # Thêm hỗ trợ 'm' (triệu) phòng khi cần
+        multiplier = 1000000
+        text_clean = text_clean.replace('m', '')
+
+    # Regex tìm số thập phân (ví dụ: 1.4, 10, 0.5)
+    match = re.search(r"(\d+(\.\d+)?)", text_clean)
+    
+    if match:
+        try:
+            # Lấy số tìm được nhân với hệ số (1 hoặc 1000)
+            number_val = float(match.group(1)) * multiplier
+            return int(number_val)
+        except:
+            return None
     return None
 
 def analyze_button_priority(button, config):
